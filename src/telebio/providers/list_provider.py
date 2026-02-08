@@ -14,7 +14,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_TELEGRAM_BIO_MAX_LENGTH = 70
+_TELEGRAM_BIO_MAX_LenGTH = 70
 
 
 class ListBioProvider:
