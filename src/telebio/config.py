@@ -80,16 +80,6 @@ class Settings:
 
 def load_settings() -> Settings:
     """Build Settings from environment variables."""
-    temperature = float(_get_env("YANDEX_TEMPERATURE", default="0.9"))
-    
-    # Validate temperature range
-    if not 0.0 <= temperature <= 1.0:
-        logger.warning(
-            "YANDEX_TEMPERATURE=%s is out of range [0.0, 1.0], using default 0.9",
-            temperature
-        )
-        temperature = 0.9
-    
     return Settings(
         api_id=int(_get_env("TELEGRAM_API_ID", required=True)),
         api_hash=_get_env("TELEGRAM_API_HASH", required=True),
@@ -103,6 +93,8 @@ def load_settings() -> Settings:
         yandex_api_key=_get_env("YANDEX_API_KEY", default=""),
         yandex_folder_id=_get_env("YANDEX_FOLDER_ID", default=""),
         yandex_model=_get_env("YANDEX_MODEL", default="yandexgpt-lite/latest"),
-        yandex_temperature=temperature,
+        yandex_temperature=float(
+            _get_env("YANDEX_TEMPERATURE", default="0.9")
+        ),
         log_level=_get_env("LOG_LEVEL", default="INFO"),
     )

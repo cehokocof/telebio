@@ -88,7 +88,11 @@ class LLMBioProvider:
                 data = response.json()
         except httpx.HTTPStatusError as exc:
             # Don't expose sensitive details in error messages
-            logger.error("YandexGPT API returned error status: %s", exc.response.status_code)
+            logger.error(
+                "YandexGPT API returned error status %s for %s",
+                exc.response.status_code,
+                _YANDEX_API_URL
+            )
             raise RuntimeError(
                 f"YandexGPT API request failed with status {exc.response.status_code}"
             ) from exc
