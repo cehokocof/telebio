@@ -104,7 +104,7 @@ class LLMBioProvider:
             "completionOptions": {
                 "stream": False,
                 "temperature": self._temperature,
-                "maxTokens": "100",
+                "maxTokens": 100,
             },
             "messages": messages,
         }
