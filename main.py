@@ -16,6 +16,7 @@ from telebio.providers.base import BioProvider
 from telebio.providers.list_provider import ListBioProvider
 from telebio.providers.llm_provider import LLMBioProvider
 from telebio.services.telegram import TelegramService
+from telebio.services.bot import BotService
 from telebio.scheduler import run_scheduler
 
 logger = logging.getLogger("telebio")
@@ -27,7 +28,12 @@ logger = logging.getLogger("telebio")
 
 def _build_provider(settings: Settings) -> BioProvider:
     """Instantiate the correct bio provider based on config."""
-    match settings.bio_provider:
+    return _build_provider_by_mode(settings.bio_provider, settings)
+
+
+def _build_provider_by_mode(mode: str, settings: Settings) -> BioProvider:
+    """Build a provider for a specific mode."""
+    match mode:
         case "list":
             return ListBioProvider(settings.phrases_path)
         case "llm":
@@ -72,12 +78,34 @@ async def _async_main() -> None:
                 settings.update_interval_minutes, settings.bio_provider)
 
     provider = _build_provider(settings)
+    
+    # Track current mode for dynamic switching
+    current_mode = {"mode": settings.bio_provider}
+    
+    # Provider factory for rebuilding on mode change
+    def provider_factory(mode: str) -> BioProvider:
+        return _build_provider_by_mode(mode, settings)
 
     async with TelegramService(
         api_id=settings.api_id,
         api_hash=settings.api_hash,
         session_path=settings.session_path,
     ) as tg:
+        # Start management bot if token is provided
+        bot = None
+        if settings.bot_token:
+            me = await tg._client.get_me()
+            bot = BotService(
+                bot_token=settings.bot_token,
+                api_id=settings.api_id,
+                api_hash=settings.api_hash,
+                current_mode=current_mode,
+                telegram=tg,
+                provider_factory=provider_factory,
+            )
+            await bot.start(owner_id=me.id)
+            logger.info("Management bot enabled")
+        
         # Graceful shutdown on SIGINT / SIGTERM
         loop = asyncio.get_running_loop()
         stop_event = asyncio.Event()
@@ -90,7 +118,14 @@ async def _async_main() -> None:
             loop.add_signal_handler(sig, _shutdown, sig)
 
         scheduler_task = asyncio.create_task(
-            run_scheduler(tg, provider, settings.update_interval_minutes)
+            run_scheduler(
+                tg, 
+                provider, 
+                settings.update_interval_minutes,
+                provider_factory=provider_factory,
+                current_mode=current_mode,
+                bot=bot,
+            )
         )
 
         # Wait until a stop signal arrives, then cancel the scheduler
@@ -101,6 +136,10 @@ async def _async_main() -> None:
             await scheduler_task
         except asyncio.CancelledError:
             pass
+        
+        # Stop bot if running
+        if bot:
+            await bot.stop()
 
     logger.info("TeleBio stopped.")
 
