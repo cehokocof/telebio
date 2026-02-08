@@ -37,6 +37,9 @@ class Settings:
     api_id: int
     api_hash: str
 
+    # Bot token for management bot (optional)
+    bot_token: str = ""
+
     # Session name for Telethon (stored in project root)
     session_name: str = "telebio"
 
@@ -83,6 +86,7 @@ def load_settings() -> Settings:
     return Settings(
         api_id=int(_get_env("TELEGRAM_API_ID", required=True)),
         api_hash=_get_env("TELEGRAM_API_HASH", required=True),
+        bot_token=_get_env("BOT_TOKEN", default=""),
         session_name=_get_env("SESSION_NAME", default="telebio"),
         update_interval_minutes=int(
             _get_env("UPDATE_INTERVAL_MINUTES", default="60")
