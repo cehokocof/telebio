@@ -30,7 +30,7 @@ _SYSTEM_PROMPT = (
 )
 
 _YANDEX_API_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
-_DEFAULT_TIMEOUT = 30  # seconds
+_DEFAULT_TIMEOUT = 60  # seconds (increased for API stability)
 
 
 class LLMBioProvider:
@@ -45,6 +45,12 @@ class LLMBioProvider:
         model: str = "yandexgpt-lite/latest",
         temperature: float = 0.9,
     ) -> None:
+        # Validate temperature parameter
+        if not 0.0 <= temperature <= 1.0:
+            raise ValueError(
+                f"Temperature must be between 0.0 and 1.0, got {temperature}"
+            )
+        
         self._api_key = api_key
         self._folder_id = folder_id
         self._model_uri = f"gpt://{folder_id}/{model}"
@@ -65,17 +71,30 @@ class LLMBioProvider:
         """Call YandexGPT and return a generated bio string."""
         body = self._build_request_body()
 
-        async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT) as client:
-            response = await client.post(
-                _YANDEX_API_URL,
-                json=body,
-                headers={
-                    "Authorization": f"Api-Key {self._api_key}",
-                    "x-folder-id": self._folder_id,
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
+        try:
+            async with httpx.AsyncClient(
+                timeout=_DEFAULT_TIMEOUT,
+                verify=True  # Explicitly enable SSL verification
+            ) as client:
+                response = await client.post(
+                    _YANDEX_API_URL,
+                    json=body,
+                    headers={
+                        "Authorization": f"Api-Key {self._api_key}",
+                        "x-folder-id": self._folder_id,
+                    },
+                )
+                response.raise_for_status()
+                data = response.json()
+        except httpx.HTTPStatusError as exc:
+            # Don't expose sensitive details in error messages
+            logger.error("YandexGPT API returned error status: %s", exc.response.status_code)
+            raise RuntimeError(
+                f"YandexGPT API request failed with status {exc.response.status_code}"
+            ) from exc
+        except httpx.RequestError as exc:
+            logger.error("YandexGPT API request failed: %s", type(exc).__name__)
+            raise RuntimeError("Failed to connect to YandexGPT API") from exc
 
         text = self._extract_text(data)
         logger.info("YandexGPT generated bio: '%s'", text)
@@ -104,7 +123,7 @@ class LLMBioProvider:
             "completionOptions": {
                 "stream": False,
                 "temperature": self._temperature,
-                "maxTokens": "100",
+                "maxTokens": 100,  # Use int instead of string
             },
             "messages": messages,
         }
@@ -129,11 +148,17 @@ class LLMBioProvider:
         """
         try:
             alternatives = data["result"]["alternatives"]
+            if not alternatives:
+                raise RuntimeError("No alternatives in YandexGPT response")
             text = alternatives[0]["message"]["text"].strip()
         except (KeyError, IndexError, TypeError) as exc:
             raise RuntimeError(
                 f"Unexpected YandexGPT response structure: {data}"
             ) from exc
+
+        # Basic validation of generated text
+        if not text:
+            raise RuntimeError("YandexGPT returned empty text")
 
         # Enforce Telegram bio length limit
         if len(text) > _TELEGRAM_BIO_MAX_LENGTH:
@@ -157,11 +182,25 @@ class LLMBioProvider:
             logger.warning("Examples file not found: %s — proceeding without examples", path)
             return []
 
-        with path.open(encoding="utf-8") as fh:
-            data = json.load(fh)
+        try:
+            with path.open(encoding="utf-8") as fh:
+                data = json.load(fh)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Invalid JSON in examples file {path}") from exc
 
-        if not isinstance(data, list) or not all(isinstance(s, str) for s in data):
-            raise ValueError(f"Expected a JSON array of strings in {path}")
+        if not isinstance(data, list):
+            raise ValueError(f"Expected a JSON array in {path}, got {type(data).__name__}")
+        
+        if not all(isinstance(s, str) for s in data):
+            raise ValueError(f"Expected all examples to be strings in {path}")
+        
+        # Limit number of examples to prevent excessive context size
+        if len(data) > 20:
+            logger.warning(
+                "Examples file contains %d items, using only first 20 to limit context size",
+                len(data)
+            )
+            data = data[:20]
 
         logger.info("Loaded %d few-shot examples from %s", len(data), path)
         return data
