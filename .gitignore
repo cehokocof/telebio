@@ -1,3 +1,7 @@
+# Environment & secrets
+.env
+*.session
+
 # Python-generated files
 __pycache__/
 *.py[oc]
@@ -8,3 +12,15 @@ wheels/
 
 # Virtual environments
 .venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml

@@ -1,0 +1,17 @@
+services:
+  telebio:
+    build: .
+    container_name: telebio
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Persist Telethon session between container restarts
+      - ./telebio.session:/app/telebio.session
+      # Mount phrases so you can edit them without rebuilding
+      - ./data:/app/data:ro
+    # stdin_open + tty are needed for the first interactive login
+    # (Telethon asks for phone number + code).
+    # After the session file is created you can remove these.
+    stdin_open: true
+    tty: true
