@@ -49,6 +49,15 @@ class Settings:
     # Path to the phrases data file (relative to project root)
     phrases_file: str = "data/phrases.json"
 
+    # Path to few-shot examples for LLM provider (relative to project root)
+    examples_file: str = "data/examples.json"
+
+    # ── YandexGPT settings (required only when bio_provider="llm") ──
+    yandex_api_key: str = ""
+    yandex_folder_id: str = ""
+    yandex_model: str = "yandexgpt-lite/latest"
+    yandex_temperature: float = 0.9
+
     # Logging level
     log_level: str = "INFO"
 
@@ -58,6 +67,10 @@ class Settings:
     @property
     def phrases_path(self) -> Path:
         return self.project_root / self.phrases_file
+
+    @property
+    def examples_path(self) -> Path:
+        return self.project_root / self.examples_file
 
     @property
     def session_path(self) -> str:
@@ -76,5 +89,12 @@ def load_settings() -> Settings:
         ),
         bio_provider=_get_env("BIO_PROVIDER", default="list"),
         phrases_file=_get_env("PHRASES_FILE", default="data/phrases.json"),
+        examples_file=_get_env("EXAMPLES_FILE", default="data/examples.json"),
+        yandex_api_key=_get_env("YANDEX_API_KEY", default=""),
+        yandex_folder_id=_get_env("YANDEX_FOLDER_ID", default=""),
+        yandex_model=_get_env("YANDEX_MODEL", default="yandexgpt-lite/latest"),
+        yandex_temperature=float(
+            _get_env("YANDEX_TEMPERATURE", default="0.9")
+        ),
         log_level=_get_env("LOG_LEVEL", default="INFO"),
     )
