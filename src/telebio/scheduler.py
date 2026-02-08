@@ -43,6 +43,11 @@ async def run_scheduler(
 
     while True:
         try:
+            # Skip update if paused
+            if bot and bot.paused:
+                await asyncio.sleep(interval_seconds)
+                continue
+
             # Check if mode changed and rebuild provider if needed
             if current_mode and provider_factory:
                 new_mode = current_mode.get("mode")

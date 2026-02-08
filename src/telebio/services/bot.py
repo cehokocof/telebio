@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import deque
+from collections.abc import Callable
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -12,6 +13,7 @@ from telethon import TelegramClient, events
 
 if TYPE_CHECKING:
     from telebio.providers.base import BioProvider
+    from telebio.services.telegram import TelegramService
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,8 @@ class BotService:
         api_id: int,
         api_hash: str,
         current_mode: dict[str, str],
+        telegram: TelegramService | None = None,
+        provider_factory: Callable[[str], BioProvider] | None = None,
     ) -> None:
         """Initialize bot service.
         
@@ -33,14 +37,19 @@ class BotService:
             api_id: Telegram API ID
             api_hash: Telegram API hash
             current_mode: Dict reference to track current bio provider mode
+            telegram: Telegram service for updating bio
+            provider_factory: Factory to build a provider by mode name
         """
         self._bot = TelegramClient("bot_session", api_id, api_hash)
         self._token = bot_token
         self._current_mode = current_mode
+        self._telegram = telegram
+        self._provider_factory = provider_factory
         self._history: deque[dict] = deque(maxlen=10)
         self._last_bio: str = ""
         self._last_update: datetime | None = None
         self._owner_id: int | None = None
+        self._paused: bool = False
 
     async def start(self, owner_id: int) -> None:
         """Start the bot and register handlers."""
@@ -60,6 +69,14 @@ class BotService:
         self._bot.add_event_handler(
             self._handle_set_mode,
             events.NewMessage(pattern=r"/set_mode (\w+)", from_users=owner_id)
+        )
+        self._bot.add_event_handler(
+            self._handle_new,
+            events.NewMessage(pattern="/new", from_users=owner_id)
+        )
+        self._bot.add_event_handler(
+            self._handle_pause,
+            events.NewMessage(pattern="/pause", from_users=owner_id)
         )
         
         me = await self._bot.get_me()
@@ -84,10 +101,12 @@ class BotService:
     async def _handle_status(self, event: events.NewMessage.Event) -> None:
         """Handle /status command."""
         mode = self._current_mode.get("mode", "unknown")
+        paused_label = "⏸ приостановлено" if self._paused else "▶️ активно"
         status_lines = [
             "🤖 <b>TeleBio Status</b>",
             "",
             f"📊 <b>Mode:</b> <code>{mode}</code>",
+            f"⏯ <b>State:</b> {paused_label}",
             f"📝 <b>Current bio:</b> {self._last_bio or '(none)'}",
         ]
         
@@ -138,6 +157,47 @@ class BotService:
             parse_mode="html"
         )
         logger.info("Mode switched to '%s' via bot command", mode)
+
+    async def _handle_new(self, event: events.NewMessage.Event) -> None:
+        """Handle /new command — immediately generate and apply a new bio."""
+        if not self._telegram or not self._provider_factory:
+            await event.respond("❌ Bot не настроен для обновления био.")
+            return
+
+        mode = self._current_mode.get("mode", "list")
+        try:
+            provider = self._provider_factory(mode)
+            new_bio = await provider.get_bio()
+            await self._telegram.update_bio(new_bio)
+            self.record_bio_update(new_bio, mode)
+            await event.respond(
+                f"✅ Био обновлено:\n<code>{new_bio}</code>",
+                parse_mode="html",
+            )
+            logger.info("Bio updated via /new command: %s", new_bio)
+        except Exception:
+            logger.exception("Error during /new command")
+            await event.respond("❌ Ошибка при обновлении био. Проверьте логи.")
+
+    async def _handle_pause(self, event: events.NewMessage.Event) -> None:
+        """Handle /pause command — toggle auto-update on/off."""
+        self._paused = not self._paused
+        if self._paused:
+            await event.respond(
+                "⏸ Автообновление приостановлено.\n"
+                "Текущее био сохранено. Отправьте /pause снова, чтобы возобновить.",
+            )
+            logger.info("Auto-update paused via /pause command")
+        else:
+            await event.respond(
+                "▶️ Автообновление возобновлено.",
+            )
+            logger.info("Auto-update resumed via /pause command")
+
+    @property
+    def paused(self) -> bool:
+        """Whether automatic bio updates are paused."""
+        return self._paused
 
     async def __aenter__(self) -> BotService:
         return self

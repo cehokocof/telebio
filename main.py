@@ -100,6 +100,8 @@ async def _async_main() -> None:
                 api_id=settings.api_id,
                 api_hash=settings.api_hash,
                 current_mode=current_mode,
+                telegram=tg,
+                provider_factory=provider_factory,
             )
             await bot.start(owner_id=me.id)
             logger.info("Management bot enabled")
