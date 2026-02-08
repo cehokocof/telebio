@@ -31,7 +31,18 @@ def _build_provider(settings: Settings) -> BioProvider:
         case "list":
             return ListBioProvider(settings.phrases_path)
         case "llm":
-            return LLMBioProvider()
+            if not settings.yandex_api_key or not settings.yandex_folder_id:
+                raise EnvironmentError(
+                    "BIO_PROVIDER=llm requires YANDEX_API_KEY and "
+                    "YANDEX_FOLDER_ID to be set in .env"
+                )
+            return LLMBioProvider(
+                api_key=settings.yandex_api_key,
+                folder_id=settings.yandex_folder_id,
+                examples_path=settings.examples_path,
+                model=settings.yandex_model,
+                temperature=settings.yandex_temperature,
+            )
         case other:
             raise ValueError(f"Unknown BIO_PROVIDER: '{other}'. Use 'list' or 'llm'.")
 

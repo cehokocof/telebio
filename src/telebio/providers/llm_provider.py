@@ -1,42 +1,167 @@
-"""Placeholder provider for future LLM-based bio generation.
+"""Bio provider that generates absurd/surreal phrases via YandexGPT API.
 
-Replace the body of `get_bio` with an actual API call
-(e.g. OpenAI ChatCompletion) when you're ready.
+Uses the Foundation Models Text Generation REST API (synchronous):
+POST https://llm.api.cloud.yandex.net/foundationModels/v1/completion
+
+Examples for few-shot prompting are loaded from a separate JSON file.
 """
 
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
+from typing import Any
+
+import httpx
 
 logger = logging.getLogger(__name__)
 
 _TELEGRAM_BIO_MAX_LENGTH = 70
 
+_SYSTEM_PROMPT = (
+    "Role: Ты — генератор случайных абсурдных фактов и сюрреалистичного юмора.\n"
+    "Task: Придумай странную, смешную фразу для био.\n"
+    "Constraints:\n"
+    "1. Длина: до 60 символов.\n"
+    "2. Тон: хаотичный, непредсказуемый, абсурдный.\n"
+    "3. Сочетай несочетаемое (еду и технологии, животных и политику, космос и быт).\n"
+    "4. Выводи ТОЛЬКО текст."
+)
+
+_YANDEX_API_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
+_DEFAULT_TIMEOUT = 30  # seconds
+
 
 class LLMBioProvider:
-    """Generates bio text via an LLM API (stub)."""
+    """Generates bio text via YandexGPT Foundation Models API."""
 
-    def __init__(self) -> None:
-        # TODO: accept api_key, model, prompt template, etc.
-        logger.info("LLMBioProvider initialised (stub)")
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        folder_id: str,
+        examples_path: Path,
+        model: str = "yandexgpt-lite/latest",
+        temperature: float = 0.9,
+    ) -> None:
+        self._api_key = api_key
+        self._folder_id = folder_id
+        self._model_uri = f"gpt://{folder_id}/{model}"
+        self._temperature = temperature
+        self._examples = self._load_examples(examples_path)
+
+        logger.info(
+            "LLMBioProvider initialised (model=%s, examples=%d)",
+            self._model_uri,
+            len(self._examples),
+        )
+
+    # ------------------------------------------------------------------
+    # Public API (matches BioProvider protocol)
+    # ------------------------------------------------------------------
 
     async def get_bio(self) -> str:
-        """Call an LLM and return a bio string.
+        """Call YandexGPT and return a generated bio string."""
+        body = self._build_request_body()
 
-        Currently raises NotImplementedError so the app fails fast
-        if someone selects this provider before it's implemented.
+        async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT) as client:
+            response = await client.post(
+                _YANDEX_API_URL,
+                json=body,
+                headers={
+                    "Authorization": f"Api-Key {self._api_key}",
+                    "x-folder-id": self._folder_id,
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+
+        text = self._extract_text(data)
+        logger.info("YandexGPT generated bio: '%s'", text)
+        return text
+
+    # ------------------------------------------------------------------
+    # Request building
+    # ------------------------------------------------------------------
+
+    def _build_request_body(self) -> dict[str, Any]:
+        """Construct the JSON payload with system prompt + few-shot examples."""
+        messages: list[dict[str, str]] = [
+            {"role": "system", "text": _SYSTEM_PROMPT},
+        ]
+
+        # Few-shot: each example is presented as a user request → assistant response pair
+        for example in self._examples:
+            messages.append({"role": "user", "text": "Придумай фразу для био."})
+            messages.append({"role": "assistant", "text": example})
+
+        # Final user turn that triggers generation
+        messages.append({"role": "user", "text": "Придумай фразу для био."})
+
+        return {
+            "modelUri": self._model_uri,
+            "completionOptions": {
+                "stream": False,
+                "temperature": self._temperature,
+                "maxTokens": 100,
+            },
+            "messages": messages,
+        }
+
+    # ------------------------------------------------------------------
+    # Response parsing
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _extract_text(data: dict[str, Any]) -> str:
+        """Pull the generated text out of the API response.
+
+        Response shape:
+        {
+          "result": {
+            "alternatives": [
+              { "message": { "role": "assistant", "text": "..." } }
+            ],
+            ...
+          }
+        }
         """
-        # TODO: implement real LLM call, e.g.:
-        #
-        # import openai
-        # response = await openai.ChatCompletion.acreate(
-        #     model="gpt-4o-mini",
-        #     messages=[{"role": "user", "content": "..."}],
-        # )
-        # text = response.choices[0].message.content.strip()
-        # return text[:_TELEGRAM_BIO_MAX_LENGTH]
+        try:
+            alternatives = data["result"]["alternatives"]
+            text = alternatives[0]["message"]["text"].strip()
+        except (KeyError, IndexError, TypeError) as exc:
+            raise RuntimeError(
+                f"Unexpected YandexGPT response structure: {data}"
+            ) from exc
 
-        raise NotImplementedError(
-            "LLMBioProvider is not yet implemented. "
-            "Set BIO_PROVIDER=list or implement this method."
-        )
+        # Enforce Telegram bio length limit
+        if len(text) > _TELEGRAM_BIO_MAX_LENGTH:
+            logger.warning(
+                "Generated bio too long (%d chars), truncating: '%s…'",
+                len(text),
+                text[:30],
+            )
+            text = text[:_TELEGRAM_BIO_MAX_LENGTH]
+
+        return text
+
+    # ------------------------------------------------------------------
+    # Examples loading
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _load_examples(path: Path) -> list[str]:
+        """Load few-shot examples from a JSON file (array of strings)."""
+        if not path.exists():
+            logger.warning("Examples file not found: %s — proceeding without examples", path)
+            return []
+
+        with path.open(encoding="utf-8") as fh:
+            data = json.load(fh)
+
+        if not isinstance(data, list) or not all(isinstance(s, str) for s in data):
+            raise ValueError(f"Expected a JSON array of strings in {path}")
+
+        logger.info("Loaded %d few-shot examples from %s", len(data), path)
+        return data
