@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -87,3 +88,175 @@ class TestUpdateBio:
 
         with pytest.raises(RPCError):
             await service.update_bio("will fail")
+
+
+# ------------------------------------------------------------------
+# collect_recent_outgoing_texts
+# ------------------------------------------------------------------
+
+
+class _AsyncMessages:
+    def __init__(self, messages: list[MagicMock]) -> None:
+        self._messages = messages
+
+    def __aiter__(self):
+        self._iter = iter(self._messages)
+        return self
+
+    async def __anext__(self):
+        try:
+            return next(self._iter)
+        except StopIteration as exc:
+            raise StopAsyncIteration from exc
+
+
+def _message(
+    text: str | None,
+    date: datetime | None = None,
+    *,
+    out: bool = True,
+) -> MagicMock:
+    msg = MagicMock()
+    msg.raw_text = text
+    msg.message = text
+    msg.date = date or datetime.now(timezone.utc)
+    msg.out = out
+    return msg
+
+
+def _dialog(entity: str, title: str | None = None) -> MagicMock:
+    dialog = MagicMock()
+    dialog.entity = entity
+    dialog.title = title
+    return dialog
+
+
+class TestCollectRecentOutgoingTexts:
+
+    async def test_collects_texts_in_chronological_order(
+        self,
+        service: TelegramService,
+        mock_client: AsyncMock,
+    ) -> None:
+        now = datetime.now(timezone.utc)
+        mock_client.get_dialogs.return_value = [_dialog("chat", "Chat Title")]
+        mock_client.iter_messages = MagicMock(return_value=_AsyncMessages([
+            _message("new", now),
+            _message("incoming", out=False),
+            _message(None),
+            _message(""),
+            _message("old", now - timedelta(minutes=1)),
+        ]))
+
+        result = await service.collect_recent_outgoing_texts(days=7, limit=10)
+
+        assert [message.text for message in result] == ["old", "new"]
+        assert [message.dialog for message in result] == ["Chat Title", "Chat Title"]
+        mock_client.get_dialogs.assert_awaited_once_with(limit=10)
+        mock_client.iter_messages.assert_called_once_with(
+            "chat",
+            limit=10,
+            wait_time=1,
+        )
+
+    async def test_stops_at_cutoff(
+        self,
+        service: TelegramService,
+        mock_client: AsyncMock,
+    ) -> None:
+        now = datetime.now(timezone.utc)
+        mock_client.get_dialogs.return_value = [_dialog("chat")]
+        mock_client.iter_messages = MagicMock(return_value=_AsyncMessages([
+            _message("fresh", now),
+            _message("too old", now - timedelta(days=10)),
+            _message("never reached", now - timedelta(days=11)),
+        ]))
+
+        result = await service.collect_recent_outgoing_texts(days=7, limit=10)
+
+        assert [message.text for message in result] == ["fresh"]
+
+    async def test_applies_global_limit_across_dialogs(
+        self,
+        service: TelegramService,
+        mock_client: AsyncMock,
+    ) -> None:
+        now = datetime.now(timezone.utc)
+        mock_client.get_dialogs.return_value = [_dialog("a"), _dialog("b")]
+        mock_client.iter_messages = MagicMock(side_effect=[
+            _AsyncMessages([
+                _message("a-new", now),
+                _message("a-old", now - timedelta(minutes=3)),
+            ]),
+            _AsyncMessages([
+                _message("b-new", now - timedelta(minutes=1)),
+                _message("b-old", now - timedelta(minutes=2)),
+            ]),
+        ])
+
+        result = await service.collect_recent_outgoing_texts(days=7, limit=2)
+
+        assert [message.text for message in result] == ["b-new", "a-new"]
+        mock_client.get_dialogs.assert_awaited_once_with(limit=2)
+        assert mock_client.iter_messages.call_count == 2
+
+    async def test_caps_scan_size_for_large_limit(
+        self,
+        service: TelegramService,
+        mock_client: AsyncMock,
+    ) -> None:
+        mock_client.get_dialogs.return_value = [_dialog("chat")]
+        mock_client.iter_messages = MagicMock(return_value=_AsyncMessages([]))
+
+        await service.collect_recent_outgoing_texts(days=7, limit=500)
+
+        mock_client.get_dialogs.assert_awaited_once_with(limit=10)
+        mock_client.iter_messages.assert_called_once_with(
+            "chat",
+            limit=50,
+            wait_time=1,
+        )
+
+    async def test_accepts_custom_scan_limits(
+        self,
+        service: TelegramService,
+        mock_client: AsyncMock,
+    ) -> None:
+        mock_client.get_dialogs.return_value = [_dialog("chat")]
+        mock_client.iter_messages = MagicMock(return_value=_AsyncMessages([]))
+
+        await service.collect_recent_outgoing_texts(
+            days=7,
+            limit=500,
+            dialog_scan_limit=30,
+            per_dialog_limit=100,
+        )
+
+        mock_client.get_dialogs.assert_awaited_once_with(limit=30)
+        mock_client.iter_messages.assert_called_once_with(
+            "chat",
+            limit=100,
+            wait_time=1,
+        )
+
+    async def test_rejects_invalid_window(self, service: TelegramService) -> None:
+        with pytest.raises(ValueError):
+            await service.collect_recent_outgoing_texts(days=0, limit=10)
+
+    async def test_logs_selected_messages(
+        self,
+        service: TelegramService,
+        mock_client: AsyncMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        now = datetime.now(timezone.utc)
+        mock_client.get_dialogs.return_value = [_dialog("chat", "Dima")]
+        mock_client.iter_messages = MagicMock(return_value=_AsyncMessages([
+            _message("обсуждаю линал", now),
+        ]))
+
+        with caplog.at_level("INFO", logger="telebio.services.telegram"):
+            await service.collect_recent_outgoing_texts(days=7, limit=10)
+
+        assert "Dima" in caplog.text
+        assert "обсуждаю линал" in caplog.text

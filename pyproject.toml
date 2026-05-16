@@ -5,15 +5,30 @@ description = "Automatic Telegram bio changer"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "catboost>=1.2.8",
     "cryptg>=0.5.2",
     "httpx>=0.28.1",
+    "pandas>=2.2.0",
+    "pyarrow>=16.0.0",
+    "protobuf>=7.34.1",
     "python-dotenv>=1.1.0",
+    "sentencepiece>=0.2.1",
+    "streamlit>=1.37.0",
     "telethon>=1.42.0",
     "tgcrypto>=1.2.5",
+    "torch>=2.12.0",
+    "transformers>=5.8.1",
+    "ipykernel>=7.2.0",
 ]
 
 [project.scripts]
 telebio = "telebio.__main__:main"
+telebio-context-export = "labeling.cli.context_export:main"
+telebio-context-report = "labeling.cli.context_relevance_report:main"
+telebio-label-build = "labeling.cli.build_dataset:main"
+telebio-label-fill-scores = "labeling.cli.fill_missing_scores:main"
+telebio-label-train = "labeling.cli.train_catboost:main"
+telebio-label-benchmark-100 = "labeling.benchmarks.benchmark_100_messages:main"
 
 [dependency-groups]
 dev = [

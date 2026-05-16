@@ -29,6 +29,13 @@ def _get_env(key: str, *, default: str | None = None, required: bool = False) ->
     return value  # type: ignore[return-value]
 
 
+def _get_bool_env(key: str, *, default: bool) -> bool:
+    value = os.getenv(key)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     """Immutable application settings."""
@@ -46,7 +53,7 @@ class Settings:
     # Interval between bio changes in minutes
     update_interval_minutes: int = 60
 
-    # Provider type: "list" | "llm"
+    # Provider type: "list" | "llm" | "context"
     bio_provider: str = "list"
 
     # Path to the phrases data file (relative to project root)
@@ -61,6 +68,22 @@ class Settings:
     yandex_model: str = "yandexgpt-lite/latest"
     yandex_temperature: float = 0.9
 
+    # ── Context mode defaults (can be changed through the bot) ──
+    context_days: int = 14
+    context_limit: int = 500
+    context_dialog_scan_limit: int = 10
+    context_per_dialog_limit: int = 50
+    context_top_k: int = 15
+    context_min_score: float = 0.55
+    context_excluded_dialogs: str = "telebio"
+    context_enable_nli: bool = True
+    context_semantic_scorer: str = "nli"
+    context_nli_model: str = "cointegrated/rubert-base-cased-nli-threeway"
+    context_embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+
+    # Runtime state file (relative to project root)
+    state_file: str = "telebio_state.json"
+
     # Logging level
     log_level: str = "INFO"
 
@@ -74,6 +97,10 @@ class Settings:
     @property
     def examples_path(self) -> Path:
         return self.project_root / self.examples_file
+
+    @property
+    def state_path(self) -> Path:
+        return self.project_root / self.state_file
 
     @property
     def session_path(self) -> str:
@@ -100,5 +127,26 @@ def load_settings() -> Settings:
         yandex_temperature=float(
             _get_env("YANDEX_TEMPERATURE", default="0.9")
         ),
+        context_days=int(_get_env("CONTEXT_DAYS", default="14")),
+        context_limit=int(_get_env("CONTEXT_LIMIT", default="500")),
+        context_dialog_scan_limit=int(_get_env("CONTEXT_DIALOG_SCAN_LIMIT", default="10")),
+        context_per_dialog_limit=int(_get_env("CONTEXT_PER_DIALOG_LIMIT", default="50")),
+        context_top_k=int(_get_env("CONTEXT_TOP_K", default="15")),
+        context_min_score=float(_get_env("CONTEXT_MIN_SCORE", default="0.55")),
+        context_excluded_dialogs=_get_env(
+            "CONTEXT_EXCLUDED_DIALOGS",
+            default="telebio",
+        ),
+        context_enable_nli=_get_bool_env("CONTEXT_ENABLE_NLI", default=True),
+        context_semantic_scorer=_get_env("CONTEXT_SEMANTIC_SCORER", default="nli"),
+        context_nli_model=_get_env(
+            "CONTEXT_NLI_MODEL",
+            default="cointegrated/rubert-base-cased-nli-threeway",
+        ),
+        context_embedding_model=_get_env(
+            "CONTEXT_EMBEDDING_MODEL",
+            default="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        ),
+        state_file=_get_env("STATE_FILE", default="telebio_state.json"),
         log_level=_get_env("LOG_LEVEL", default="INFO"),
     )

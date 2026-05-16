@@ -1,11 +1,11 @@
 # 🤖 TeleBio
 
-> Автоматическая смена описания профиля (Bio) в Telegram — по таймеру, из списка фраз или через генерацию нейросетью YandexGPT.
+> Автоматическая смена описания профиля (Bio) в Telegram — по таймеру, из списка фраз, через YandexGPT или по контексту ваших недавних сообщений.
 
 ![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue?logo=python&logoColor=white)
 ![Telethon](https://img.shields.io/badge/Telethon-MTProto-0088cc?logo=telegram)
 ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-76%20passed-brightgreen?logo=pytest)
+![Tests](https://img.shields.io/badge/tests-100%20passed-brightgreen?logo=pytest)
 
 ---
 
@@ -31,85 +31,13 @@
 | 🔄 **Автосмена био** | Меняет "О себе" в Telegram по заданному интервалу (по умолчанию — каждые 60 минут) |
 | 📝 **Список фраз** | Берёт фразы из JSON-файла, перебирает их последовательно с зацикливанием |
 | 🧠 **YandexGPT** | Генерирует абсурдные/смешные фразы через API YandexGPT с few-shot примерами |
+| 🧩 **Контекст сообщений** | Генерирует био по вашим недавним исходящим сообщениям, чтобы отражать текущее состояние |
 | 🔌 **Модульность** | Провайдеры реализуют `Protocol` — можно добавить свой за 5 минут |
-| 🤖 **Telegram-бот** | Управление через бота: `/status`, `/history`, `/set_mode`, `/new`, `/pause` |
+| 🤖 **Telegram-бот** | Управление через бота: `/status`, `/history`, `/set_mode`, `/context`, `/new`, `/pause` |
 | 🛡️ **Обработка ошибок** | `FloodWaitError` — автоматический sleep + retry; остальные ошибки не крашат процесс |
 | ⚡ **Graceful shutdown** | Корректное завершение по `SIGINT`/`SIGTERM` |
 | 🐳 **Docker-ready** | Dockerfile + docker-compose для деплоя на сервер |
-| ✅ **76 тестов** | Полное покрытие: провайдеры, сервис Telegram, бот-команды, планировщик, конфиг, фабрика |
-
----
-
-## 🏗️ Архитектура
-
-```
-┌──────────────┐     ┌─────────────────┐     ┌──────────────────┐
-│  Scheduler   │────▶│  BioProvider     │     │  TelegramService │
-│  (asyncio)   │     │  (Protocol)      │     │  (Telethon)      │
-│              │     ├─────────────────┤     │                  │
-│  interval ─┐ │     │ ListBioProvider  │     │  update_bio()    │
-│            │ │     │ LLMBioProvider   │     │  FloodWait retry │
-│  get_bio() │ │     └─────────────────┘     └──────────────────┘
-│       │    │ │              │                        ▲
-│       ▼    │ │              ▼                        │
-│  update_bio()│─────────────────────────────────────────┘
-│            │ │
-│  sleep ◀───┘ │
-└──────────────┘
-
-┌──────────────┐     ┌─────────────────┐
-│   Config     │────▶│   .env file     │
-│  (dataclass) │     │  API_ID, HASH…  │
-└──────────────┘     └─────────────────┘
-```
-
-**Принцип:** Scheduler в бесконечном цикле запрашивает у провайдера новую фразу и передаёт её в Telegram-сервис. Провайдер подменяется через одну переменную окружения.
-
----
-
-## 📁 Структура проекта
-
-```
-telebio/
-├── src/telebio/                 # Основной пакет
-│   ├── config.py                # Settings из .env (frozen dataclass)
-│   ├── scheduler.py             # Бесконечный цикл обновления
-│   ├── providers/
-│   │   ├── base.py              # BioProvider Protocol
-│   │   ├── list_provider.py     # Фразы из JSON
-│   │   └── llm_provider.py      # Генерация через YandexGPT
-│   └── services/
-│       ├── bot.py                # BotService: управление через Telegram-бота
-│       ├── telegram.py           # Telethon: подключение + update_bio
-│       └── handlers/             # Команды бота (каждая — отдельный модуль)
-│           ├── __init__.py       # register_all — регистрация всех хендлеров
-│           ├── status.py         # /status — текущий статус
-│           ├── history.py        # /history — история обновлений
-│           ├── set_mode.py       # /set_mode — смена провайдера
-│           ├── new.py            # /new — немедленное обновление био
-│           └── pause.py          # /pause — пауза/возобновление
-│
-├── tests/                       # 76 тестов (pytest + pytest-asyncio)
-│   ├── conftest.py              # Общие фикстуры
-│   ├── test_config.py           # Конфигурация и env-переменные
-│   ├── test_list_provider.py    # ListBioProvider
-│   ├── test_llm_provider.py     # LLMBioProvider + mocked HTTP
-│   ├── test_telegram_service.py # TelegramService + FloodWait
-│   ├── test_scheduler.py        # Планировщик
-│   ├── test_main.py             # Фабрика _build_provider
-│   └── test_protocol.py         # Проверка Protocol conformance
-│
-├── data/
-│   ├── phrases.json             # Фразы для ListBioProvider
-│   └── examples.json            # Few-shot примеры для YandexGPT
-│
-├── main.py                      # Точка входа
-├── pyproject.toml               # Зависимости и настройки pytest
-├── Dockerfile
-├── docker-compose.yml
-├── .env.example                 # Шаблон конфигурации
-└── .gitignore
-```
+| ✅ **100 тестов** | Полное покрытие: провайдеры, сервис Telegram, bot-команды, state, планировщик, конфиг, фабрика |
 
 ---
 
@@ -160,16 +88,28 @@ uv run python main.py
 |---|:---:|---|---|
 | `TELEGRAM_API_ID` | ✅ | — | API ID из my.telegram.org |
 | `TELEGRAM_API_HASH` | ✅ | — | API Hash из my.telegram.org |
-| `BIO_PROVIDER` | | `list` | Провайдер: `list` или `llm` |
+| `BIO_PROVIDER` | | `list` | Провайдер: `list`, `llm` или `context` |
 | `UPDATE_INTERVAL_MINUTES` | | `60` | Интервал смены био (минуты) |
 | `PHRASES_FILE` | | `data/phrases.json` | Путь к файлу фраз |
 | `EXAMPLES_FILE` | | `data/examples.json` | Путь к few-shot примерам для LLM |
 | `SESSION_NAME` | | `telebio` | Имя файла сессии Telethon |
 | `LOG_LEVEL` | | `INFO` | Уровень логирования |
-| `YANDEX_API_KEY` | ⚠️ | — | API-ключ Yandex Cloud (нужен при `llm`) |
-| `YANDEX_FOLDER_ID` | ⚠️ | — | Folder ID в Yandex Cloud (нужен при `llm`) |
+| `YANDEX_API_KEY` | ⚠️ | — | API-ключ Yandex Cloud (нужен при `llm`/`context`) |
+| `YANDEX_FOLDER_ID` | ⚠️ | — | Folder ID в Yandex Cloud (нужен при `llm`/`context`) |
 | `YANDEX_MODEL` | | `yandexgpt-lite/latest` | Модель YandexGPT |
 | `YANDEX_TEMPERATURE` | | `0.9` | Температура генерации (0.0–1.0) |
+| `CONTEXT_DAYS` | | `14` | Стартовый период сообщений для `context` |
+| `CONTEXT_LIMIT` | | `500` | Стартовый лимит сообщений для `context` |
+| `CONTEXT_DIALOG_SCAN_LIMIT` | | `10` | Сколько последних диалогов сканировать |
+| `CONTEXT_PER_DIALOG_LIMIT` | | `50` | Сколько сообщений смотреть в каждом диалоге |
+| `CONTEXT_TOP_K` | | `15` | Сколько scored сообщений отдавать в prompt |
+| `CONTEXT_MIN_SCORE` | | `0.55` | Минимальный relevance score для сообщения |
+| `CONTEXT_EXCLUDED_DIALOGS` | | `telebio` | Чаты, исключённые из context scoring |
+| `CONTEXT_ENABLE_NLI` | | `true` | Включить локальный NLI relevance слой |
+| `CONTEXT_SEMANTIC_SCORER` | | `nli` | Semantic scorer: `nli` или `embedding` |
+| `CONTEXT_NLI_MODEL` | | `cointegrated/rubert-base-cased-nli-threeway` | Hugging Face NLI модель |
+| `CONTEXT_EMBEDDING_MODEL` | | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | Hugging Face embedding модель |
+| `STATE_FILE` | | `telebio_state.json` | JSON-файл для bot-controlled mode/context settings |
 | `BOT_TOKEN` | | — | Токен Telegram-бота от @BotFather (для управления) |
 
 ---
@@ -219,38 +159,48 @@ YANDEX_API_KEY=ваш_ключ
 YANDEX_FOLDER_ID=ваш_folder_id
 ```
 
----
+### 🧩 `context` — YandexGPT по вашим сообщениям
 
-## 🐳 Docker
+Собирает ваши недавние исходящие текстовые сообщения в Telegram и просит YandexGPT сжать их в короткое био, которое отражает текущие темы, настроение и фокус внимания.
 
-### Сборка и запуск
+- Источник: исходящие текстовые сообщения аккаунта Telethon
+- Окно: гибрид `CONTEXT_DAYS` + `CONTEXT_LIMIT`
+- Фильтрация: heuristic rules + semantic scorer (`nli` или `embedding`), с JSON-логом решений
+- Skip: если выбранный context не изменился, YandexGPT не вызывается
+- Порядок в промпте: от старых сообщений к новым
+- Настройки окна можно менять через Telegram-бота: `/context 7 300`
+- Выбранный режим и context-настройки сохраняются в `STATE_FILE`
 
-```bash
-docker compose up --build
+**Для включения:**
+```env
+BIO_PROVIDER=context
+YANDEX_API_KEY=ваш_ключ
+YANDEX_FOLDER_ID=ваш_folder_id
+CONTEXT_DAYS=14
+CONTEXT_LIMIT=500
 ```
 
-### Первая авторизация
-
-При первом запуске нужно пройти интерактивную авторизацию Telethon (ввести номер телефона и код). Для этого в `docker-compose.yml` включены `stdin_open: true` и `tty: true`.
-
-Подключитесь к контейнеру:
-
+**Экспорт истории для экспериментов:**
 ```bash
-docker attach telebio
+PYTHONPATH=src:. uv run python -m labeling.cli.context_export \
+  --days 30 \
+  --limit 1000 \
+  --dialogs 50 \
+  --per-dialog 200 \
+  --output tests/fixtures/context_messages_live.json
 ```
 
-После успешного логина и создания `telebio.session` можно убрать `stdin_open` и `tty` из compose-файла.
+После этого можно сравнивать фильтры на собранном JSON:
+```bash
+PYTHONPATH=src:. uv run python -m labeling.cli.context_relevance_report \
+  tests/fixtures/context_messages_live.json \
+  --scorer nli
+```
 
-### Что монтируется
-
-| Volume | Зачем |
-|---|---|
-| `./telebio.session:/app/telebio.session` | Сохранение сессии между перезапусками |
-| `./data:/app/data:ro` | Редактирование фраз/примеров без пересборки образа |
-
-### Политика перезапуска
-
-`restart: unless-stopped` — контейнер автоматически перезапускается при падении и после ребута сервера.
+Benchmark scoring pipeline на 100 сообщениях:
+```bash
+PYTHONPATH=src:. uv run python -m labeling.benchmarks.benchmark_100_messages
+```
 
 ---
 
@@ -267,54 +217,23 @@ uv run pytest -v
 
 | Модуль | Тестов | Что проверяется |
 |---|:---:|---|
-| `test_config.py` | 11 | `_get_env`, `Settings` (пути, frozen, defaults), `load_settings` |
+| `test_config.py` | 12 | `_get_env`, `Settings` (пути, frozen, defaults), `load_settings` |
 | `test_list_provider.py` | 10 | Загрузка JSON, ошибки валидации, truncation, sequential cycling |
-| `test_llm_provider.py` | 11 | Init, `_build_request_body`, `_extract_text`, `get_bio` через mocked HTTP |
-| `test_telegram_service.py` | 6 | Lifecycle, `update_bio`, `FloodWaitError` retry, `RPCError` re-raise |
+| `test_llm_provider.py` | 15 | Init, `_build_request_body`, `_extract_text`, `get_bio` через mocked HTTP |
+| `test_context_provider.py` | 5 | ContextBioProvider, prompt body, truncation, mocked HTTP |
+| `test_telegram_service.py` | 9 | Lifecycle, `update_bio`, `collect_recent_outgoing_texts`, FloodWait/RPCError |
 | `test_scheduler.py` | 3 | Цикл обновления, устойчивость к ошибкам provider/telegram |
-| `test_bot_handlers.py` | 24 | Все команды бота: /status, /history, /set_mode, /new, /pause, пауза планировщика |
-| `test_main.py` | 5 | Фабрика: list, llm, missing credentials, unknown provider |
+| `test_bot_handlers.py` | 29 | Все команды бота: /status, /history, /set_mode, /context, /new, /pause |
+| `test_main.py` | 7 | Фабрика: list, llm, context, missing credentials, unknown provider |
+| `test_state.py` | 8 | Runtime state load/save, fallback, context validation |
 | `test_protocol.py` | 2 | Оба провайдера реализуют `BioProvider` Protocol |
-| **Итого** | **76** | |
+| **Итого** | **100** | |
 
 ### Стек тестирования
 
 - **pytest** + **pytest-asyncio** — запуск async-тестов
 - **respx** — мок HTTP-запросов к YandexGPT (поверх httpx)
 - **unittest.mock** — мок Telethon клиента
-
----
-
-## 🔌 Расширение
-
-### Добавление своего провайдера
-
-1. Создайте файл в `src/telebio/providers/`:
-
-```python
-# src/telebio/providers/my_provider.py
-
-class MyBioProvider:
-    """Достаточно реализовать один async-метод."""
-
-    async def get_bio(self) -> str:
-        return "Моя новая фраза"
-```
-
-2. Зарегистрируйте его в фабрике (`main.py`):
-
-```python
-case "my_provider":
-    return MyBioProvider()
-```
-
-3. Укажите в `.env`:
-
-```env
-BIO_PROVIDER=my_provider
-```
-
-Никаких абстрактных классов наследовать не нужно — используется `typing.Protocol` (structural subtyping / duck typing).
 
 ---
 
@@ -326,24 +245,13 @@ BIO_PROVIDER=my_provider
 |---|---|
 | `/status` | Текущий режим, состояние (активно / на паузе), последнее био |
 | `/history` | Последние 10 обновлений био с таймстампами |
-| `/set_mode list\|llm` | Переключение провайдера на лету |
+| `/set_mode list\|llm\|context` | Переключение провайдера на лету |
+| `/context` | Показать окно сообщений для context-режима |
+| `/context <days> <limit>` | Изменить и сохранить окно сообщений, например `/context 14 500` |
 | `/new` | Немедленно сгенерировать и применить новое био |
 | `/pause` | Приостановить / возобновить автообновление (текущее био сохраняется) |
 
 Хендлеры вынесены в отдельные модули (`services/handlers/`), что упрощает добавление новых команд — достаточно создать файл с функцией-обработчиком и зарегистрировать её в `handlers/__init__.py`.
-
----
-
-## 🛡️ Обработка ошибок
-
-| Ситуация | Поведение |
-|---|---|
-| `FloodWaitError` от Telegram | Автоматический `sleep(N секунд)` + одна повторная попытка |
-| Любая `RPCError` | Логирование + re-raise |
-| Ошибка в провайдере или сервисе | Логирование, переход к следующему циклу (процесс не падает) |
-| Отсутствует `TELEGRAM_API_ID` | Ошибка при старте с понятным сообщением |
-| `BIO_PROVIDER=llm` без ключей | Ошибка при старте: «requires YANDEX_API_KEY and YANDEX_FOLDER_ID» |
-| Фраза > 70 символов | Автоматическая обрезка + warning в лог |
 
 ---
 

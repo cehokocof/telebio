@@ -12,12 +12,15 @@ import signal
 import sys
 
 from telebio.config import load_settings, Settings
+from telebio.context_relevance import RelevanceOptions
 from telebio.providers.base import BioProvider
+from telebio.providers.context_provider import ContextBioProvider
 from telebio.providers.list_provider import ListBioProvider
 from telebio.providers.llm_provider import LLMBioProvider
 from telebio.services.telegram import TelegramService
 from telebio.services.bot import BotService
 from telebio.scheduler import run_scheduler
+from telebio.state import RuntimeState
 
 logger = logging.getLogger("telebio")
 
@@ -31,17 +34,18 @@ def _build_provider(settings: Settings) -> BioProvider:
     return _build_provider_by_mode(settings.bio_provider, settings)
 
 
-def _build_provider_by_mode(mode: str, settings: Settings) -> BioProvider:
+def _build_provider_by_mode(
+    mode: str,
+    settings: Settings,
+    telegram: TelegramService | None = None,
+    runtime_state: RuntimeState | None = None,
+) -> BioProvider:
     """Build a provider for a specific mode."""
     match mode:
         case "list":
             return ListBioProvider(settings.phrases_path)
         case "llm":
-            if not settings.yandex_api_key or not settings.yandex_folder_id:
-                raise EnvironmentError(
-                    "BIO_PROVIDER=llm requires YANDEX_API_KEY and "
-                    "YANDEX_FOLDER_ID to be set in .env"
-                )
+            _require_yandex_settings(mode, settings)
             return LLMBioProvider(
                 api_key=settings.yandex_api_key,
                 folder_id=settings.yandex_folder_id,
@@ -49,8 +53,54 @@ def _build_provider_by_mode(mode: str, settings: Settings) -> BioProvider:
                 model=settings.yandex_model,
                 temperature=settings.yandex_temperature,
             )
+        case "context":
+            _require_yandex_settings(mode, settings)
+            if telegram is None:
+                raise ValueError("BIO_PROVIDER=context requires TelegramService")
+            days = runtime_state.context_days if runtime_state else settings.context_days
+            limit = runtime_state.context_limit if runtime_state else settings.context_limit
+            return ContextBioProvider(
+                telegram=telegram,
+                api_key=settings.yandex_api_key,
+                folder_id=settings.yandex_folder_id,
+                days=days,
+                limit=limit,
+                dialog_scan_limit=settings.context_dialog_scan_limit,
+                per_dialog_limit=settings.context_per_dialog_limit,
+                relevance_options=_build_relevance_options(settings),
+                runtime_state=runtime_state,
+                model=settings.yandex_model,
+                temperature=settings.yandex_temperature,
+            )
         case other:
-            raise ValueError(f"Unknown BIO_PROVIDER: '{other}'. Use 'list' or 'llm'.")
+            raise ValueError(
+                f"Unknown BIO_PROVIDER: '{other}'. Use 'list', 'llm' or 'context'."
+            )
+
+
+def _require_yandex_settings(mode: str, settings: Settings) -> None:
+    if not settings.yandex_api_key or not settings.yandex_folder_id:
+        raise EnvironmentError(
+            f"BIO_PROVIDER={mode} requires YANDEX_API_KEY and "
+            "YANDEX_FOLDER_ID to be set in .env"
+        )
+
+
+def _build_relevance_options(settings: Settings) -> RelevanceOptions:
+    excluded_dialogs = tuple(
+        dialog.strip()
+        for dialog in settings.context_excluded_dialogs.split(",")
+        if dialog.strip()
+    )
+    return RelevanceOptions(
+        top_k=settings.context_top_k,
+        min_score=settings.context_min_score,
+        excluded_dialogs=excluded_dialogs,
+        enable_nli=settings.context_enable_nli,
+        semantic_scorer=settings.context_semantic_scorer,
+        nli_model=settings.context_nli_model,
+        embedding_model=settings.context_embedding_model,
+    )
 
 
 # ------------------------------------------------------------------
@@ -77,20 +127,27 @@ async def _async_main() -> None:
     logger.info("Starting TeleBio (interval=%d min, provider=%s)",
                 settings.update_interval_minutes, settings.bio_provider)
 
-    provider = _build_provider(settings)
-    
+    runtime_state = RuntimeState.load(
+        settings.state_path,
+        default_mode=settings.bio_provider,
+        default_context_days=settings.context_days,
+        default_context_limit=settings.context_limit,
+    )
+
     # Track current mode for dynamic switching
-    current_mode = {"mode": settings.bio_provider}
-    
-    # Provider factory for rebuilding on mode change
-    def provider_factory(mode: str) -> BioProvider:
-        return _build_provider_by_mode(mode, settings)
+    current_mode = {"mode": runtime_state.mode}
 
     async with TelegramService(
         api_id=settings.api_id,
         api_hash=settings.api_hash,
         session_path=settings.session_path,
     ) as tg:
+        # Provider factory for rebuilding on mode change
+        def provider_factory(mode: str) -> BioProvider:
+            return _build_provider_by_mode(mode, settings, tg, runtime_state)
+
+        provider = provider_factory(current_mode["mode"])
+
         # Start management bot if token is provided
         bot = None
         if settings.bot_token:
@@ -102,6 +159,7 @@ async def _async_main() -> None:
                 current_mode=current_mode,
                 telegram=tg,
                 provider_factory=provider_factory,
+                runtime_state=runtime_state,
             )
             await bot.start(owner_id=me.id)
             logger.info("Management bot enabled")

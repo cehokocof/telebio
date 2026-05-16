@@ -10,8 +10,10 @@ import pytest
 
 from main import _build_provider
 from telebio.config import Settings
+from telebio.providers.context_provider import ContextBioProvider
 from telebio.providers.list_provider import ListBioProvider
 from telebio.providers.llm_provider import LLMBioProvider
+from telebio.state import RuntimeState
 
 
 @pytest.fixture()
@@ -61,3 +63,25 @@ class TestBuildProvider:
         s = replace(base_settings, bio_provider="magic")
         with pytest.raises(ValueError, match="Unknown BIO_PROVIDER"):
             _build_provider(s)
+
+    def test_context_provider(self, base_settings: Settings, tmp_path: Path) -> None:
+        from dataclasses import replace
+        from main import _build_provider_by_mode
+
+        s = replace(base_settings, bio_provider="context")
+        state = RuntimeState.load(
+            tmp_path / "state.json",
+            default_mode="context",
+            default_context_days=3,
+            default_context_limit=42,
+        )
+        provider = _build_provider_by_mode("context", s, telegram=object(), runtime_state=state)
+        assert isinstance(provider, ContextBioProvider)
+
+    def test_context_without_telegram_raises(self, base_settings: Settings) -> None:
+        from dataclasses import replace
+        from main import _build_provider_by_mode
+
+        s = replace(base_settings, bio_provider="context")
+        with pytest.raises(ValueError, match="TelegramService"):
+            _build_provider_by_mode("context", s)

@@ -1,6 +1,8 @@
 # Environment & secrets
 .env
 *.session
+*.session-journal
+telebio_state.json
 
 # Python-generated files
 __pycache__/
@@ -9,6 +11,9 @@ build/
 dist/
 wheels/
 *.egg-info
+logs/
+data/*.parquet
+data/*.cbm
 
 # Virtual environments
 .venv

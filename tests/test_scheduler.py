@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from telebio.scheduler import run_scheduler
+from telebio.providers.context_provider import ContextUnchanged
 
 
 class TestRunScheduler:
@@ -62,3 +63,37 @@ class TestRunScheduler:
             await task
 
         assert provider.get_bio.await_count >= 2
+
+    async def test_commits_provider_after_successful_update(self, mock_telegram: AsyncMock) -> None:
+        class Provider:
+            def __init__(self) -> None:
+                self.committed = False
+
+            async def get_bio(self) -> str:
+                return "bio"
+
+            def commit_successful_update(self) -> None:
+                self.committed = True
+
+        provider = Provider()
+        task = asyncio.create_task(run_scheduler(mock_telegram, provider, interval_minutes=60))
+
+        await asyncio.sleep(0.05)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert provider.committed is True
+
+    async def test_skips_context_unchanged(self, mock_telegram: AsyncMock) -> None:
+        provider = AsyncMock()
+        provider.get_bio.side_effect = ContextUnchanged("same")
+
+        task = asyncio.create_task(run_scheduler(mock_telegram, provider, interval_minutes=60))
+
+        await asyncio.sleep(0.05)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        mock_telegram.update_bio.assert_not_awaited()

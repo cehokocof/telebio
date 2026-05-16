@@ -14,12 +14,12 @@ logger = logging.getLogger(__name__)
 
 
 async def handle_set_mode(event: events.NewMessage.Event, bot: BotService) -> None:
-    """Switch bio provider mode (list / llm)."""
+    """Switch bio provider mode (list / llm / context)."""
     mode = event.pattern_match.group(1).lower()
 
-    if mode not in ("list", "llm"):
+    if mode not in ("list", "llm", "context"):
         await event.respond(
-            "❌ Invalid mode. Use <code>list</code> or <code>llm</code>.",
+            "❌ Invalid mode. Use <code>list</code>, <code>llm</code> or <code>context</code>.",
             parse_mode="html",
         )
         return
@@ -29,7 +29,7 @@ async def handle_set_mode(event: events.NewMessage.Event, bot: BotService) -> No
         await event.respond(f"ℹ️ Already in <code>{mode}</code> mode.", parse_mode="html")
         return
 
-    bot.current_mode["mode"] = mode
+    bot.set_mode(mode)
 
     await event.respond(
         f"✅ Mode switched to <code>{mode}</code>\n"

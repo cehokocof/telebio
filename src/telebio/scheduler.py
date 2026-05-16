@@ -7,6 +7,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from telebio.providers.base import BioProvider
+from telebio.providers.context_provider import ContextUnchanged
 from telebio.services.telegram import TelegramService
 
 if TYPE_CHECKING:
@@ -40,6 +41,11 @@ async def run_scheduler(
 
     active_provider = provider
     last_mode = current_mode.get("mode") if current_mode else None
+    last_context_settings = (
+        (bot.context_days, bot.context_limit)
+        if bot and last_mode == "context"
+        else None
+    )
 
     while True:
         try:
@@ -51,19 +57,40 @@ async def run_scheduler(
             # Check if mode changed and rebuild provider if needed
             if current_mode and provider_factory:
                 new_mode = current_mode.get("mode")
-                if new_mode and new_mode != last_mode:
+                context_settings = (
+                    (bot.context_days, bot.context_limit)
+                    if bot and new_mode == "context"
+                    else None
+                )
+                if (
+                    new_mode
+                    and (
+                        new_mode != last_mode
+                        or context_settings != last_context_settings
+                    )
+                ):
                     logger.info("Mode changed from '%s' to '%s', rebuilding provider", last_mode, new_mode)
                     active_provider = provider_factory(new_mode)
                     last_mode = new_mode
+                    last_context_settings = context_settings
             
             new_bio = await active_provider.get_bio()
             await telegram.update_bio(new_bio)
+            _commit_successful_update(active_provider)
             
             # Record in bot history if bot is available
             if bot and current_mode:
                 bot.record_bio_update(new_bio, current_mode.get("mode", "unknown"))
                 
+        except ContextUnchanged as exc:
+            logger.info("Context unchanged — skipping bio update: %s", exc)
         except Exception:
             logger.exception("Unhandled error during bio update — will retry next cycle")
 
         await asyncio.sleep(interval_seconds)
+
+
+def _commit_successful_update(provider: BioProvider) -> None:
+    commit = getattr(type(provider), "commit_successful_update", None)
+    if commit:
+        commit(provider)

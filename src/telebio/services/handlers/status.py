@@ -24,6 +24,10 @@ async def handle_status(event: events.NewMessage.Event, bot: BotService) -> None
         f"⏯ <b>State:</b> {paused_label}",
         f"📝 <b>Current bio:</b> {bot.last_bio or '(none)'}",
     ]
+    if mode == "context":
+        status_lines.append(
+            f"🧠 <b>Context:</b> {bot.context_days} days / {bot.context_limit} messages"
+        )
 
     if bot.last_update:
         status_lines.append(

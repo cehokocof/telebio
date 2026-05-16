@@ -11,6 +11,7 @@ from telebio.services.handlers.history import handle_history
 from telebio.services.handlers.set_mode import handle_set_mode
 from telebio.services.handlers.new import handle_new
 from telebio.services.handlers.pause import handle_pause
+from telebio.services.handlers.context import handle_context
 
 if TYPE_CHECKING:
     from telethon import TelegramClient
@@ -38,4 +39,8 @@ def register_all(client: TelegramClient, bot: BotService, owner_id: int) -> None
     client.add_event_handler(
         lambda e: handle_pause(e, bot),
         events.NewMessage(pattern="/pause", from_users=owner_id),
+    )
+    client.add_event_handler(
+        lambda e: handle_context(e, bot),
+        events.NewMessage(pattern=r"^/context(?:\s+(\d+)\s+(\d+))?$", from_users=owner_id),
     )

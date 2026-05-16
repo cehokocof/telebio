@@ -15,6 +15,7 @@ from telebio.services.handlers import register_all
 if TYPE_CHECKING:
     from telebio.providers.base import BioProvider
     from telebio.services.telegram import TelegramService
+    from telebio.state import RuntimeState
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class BotService:
         current_mode: dict[str, str],
         telegram: TelegramService | None = None,
         provider_factory: Callable[[str], BioProvider] | None = None,
+        runtime_state: RuntimeState | None = None,
     ) -> None:
         """Initialize bot service.
 
@@ -40,12 +42,16 @@ class BotService:
             current_mode: Dict reference to track current bio provider mode
             telegram: Telegram service for updating bio
             provider_factory: Factory to build a provider by mode name
+            runtime_state: Optional persisted runtime settings
         """
         self._bot = TelegramClient("bot_session", api_id, api_hash)
         self._token = bot_token
         self._current_mode = current_mode
         self._telegram = telegram
         self._provider_factory = provider_factory
+        self._runtime_state = runtime_state
+        self._context_days = runtime_state.context_days if runtime_state else 14
+        self._context_limit = runtime_state.context_limit if runtime_state else 500
         self._history: deque[dict] = deque(maxlen=10)
         self._last_bio: str = ""
         self._last_update: datetime | None = None
@@ -67,6 +73,14 @@ class BotService:
     @property
     def provider_factory(self) -> Callable[[str], BioProvider] | None:
         return self._provider_factory
+
+    @property
+    def context_days(self) -> int:
+        return self._context_days
+
+    @property
+    def context_limit(self) -> int:
+        return self._context_limit
 
     @property
     def last_bio(self) -> str:
@@ -123,6 +137,24 @@ class BotService:
     def toggle_pause(self) -> None:
         """Flip the paused flag."""
         self._paused = not self._paused
+
+    def set_mode(self, mode: str) -> None:
+        """Set current provider mode and persist it when state is available."""
+        self._current_mode["mode"] = mode
+        if self._runtime_state:
+            self._runtime_state.set_mode(mode)
+
+    def set_context_settings(self, days: int, limit: int) -> None:
+        """Set context collection settings and persist them."""
+        if self._runtime_state:
+            self._runtime_state.set_context_settings(days, limit)
+        else:
+            from telebio.state import validate_context_settings
+
+            validate_context_settings(days, limit)
+
+        self._context_days = days
+        self._context_limit = limit
 
     # ------------------------------------------------------------------
     # Context manager

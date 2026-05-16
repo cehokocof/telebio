@@ -15,6 +15,9 @@ from telebio.services.handlers.history import handle_history
 from telebio.services.handlers.set_mode import handle_set_mode
 from telebio.services.handlers.new import handle_new
 from telebio.services.handlers.pause import handle_pause
+from telebio.services.handlers.context import handle_context
+from telebio.providers.context_provider import ContextUnchanged
+from telebio.state import RuntimeState
 
 
 # ------------------------------------------------------------------
@@ -37,11 +40,18 @@ def _make_bot(**overrides) -> BotService:
     return bot
 
 
-def _make_event(pattern_match_group: str | None = None) -> AsyncMock:
+def _make_event(
+    pattern_match_group: str | None = None,
+    pattern_match_groups: tuple[str | None, ...] | None = None,
+) -> AsyncMock:
     """Create a mock Telethon NewMessage event."""
     event = AsyncMock()
     event.respond = AsyncMock()
-    if pattern_match_group is not None:
+    if pattern_match_groups is not None:
+        match = MagicMock()
+        match.group.side_effect = lambda index: pattern_match_groups[index - 1]
+        event.pattern_match = match
+    elif pattern_match_group is not None:
         match = MagicMock()
         match.group.return_value = pattern_match_group
         event.pattern_match = match
@@ -172,6 +182,14 @@ class TestHandleSetMode:
 
         assert bot.current_mode["mode"] == "llm"
 
+    async def test_set_mode_context(self) -> None:
+        bot = _make_bot(current_mode={"mode": "list"})
+        event = _make_event(pattern_match_group="context")
+
+        await handle_set_mode(event, bot)
+
+        assert bot.current_mode["mode"] == "context"
+
 
 # ------------------------------------------------------------------
 # /new
@@ -260,6 +278,39 @@ class TestHandleNew:
 
         assert captured_modes == ["llm"]
 
+    async def test_new_commits_provider_after_update(self) -> None:
+        class Provider:
+            def __init__(self) -> None:
+                self.committed = False
+
+            async def get_bio(self) -> str:
+                return "bio"
+
+            def commit_successful_update(self) -> None:
+                self.committed = True
+
+        mock_tg = AsyncMock()
+        provider = Provider()
+        bot = _make_bot(telegram=mock_tg, provider_factory=lambda _mode: provider)
+        event = _make_event()
+
+        await handle_new(event, bot)
+
+        assert provider.committed is True
+
+    async def test_new_handles_context_unchanged(self) -> None:
+        mock_tg = AsyncMock()
+        provider = AsyncMock()
+        provider.get_bio.side_effect = ContextUnchanged("same")
+        bot = _make_bot(telegram=mock_tg, provider_factory=lambda _mode: provider)
+        event = _make_event()
+
+        await handle_new(event, bot)
+
+        mock_tg.update_bio.assert_not_awaited()
+        text = event.respond.call_args[0][0]
+        assert "Контекст не изменился" in text
+
 
 # ------------------------------------------------------------------
 # /pause
@@ -299,6 +350,65 @@ class TestHandlePause:
 
         await handle_pause(event, bot)
         assert not bot.paused
+
+
+# ------------------------------------------------------------------
+# /context
+# ------------------------------------------------------------------
+
+
+class TestHandleContext:
+
+    async def test_context_shows_current_settings(self) -> None:
+        bot = _make_bot()
+        event = _make_event(pattern_match_groups=(None, None))
+
+        await handle_context(event, bot)
+
+        text = event.respond.call_args[0][0]
+        assert "14" in text
+        assert "500" in text
+
+    async def test_context_updates_settings(self) -> None:
+        bot = _make_bot()
+        event = _make_event(pattern_match_groups=("7", "300"))
+
+        await handle_context(event, bot)
+
+        assert bot.context_days == 7
+        assert bot.context_limit == 300
+        text = event.respond.call_args[0][0]
+        assert "updated" in text
+
+    async def test_context_persists_settings(self, tmp_path) -> None:
+        state = RuntimeState.load(
+            tmp_path / "state.json",
+            default_mode="list",
+            default_context_days=14,
+            default_context_limit=500,
+        )
+        bot = _make_bot(runtime_state=state)
+        event = _make_event(pattern_match_groups=("3", "42"))
+
+        await handle_context(event, bot)
+
+        reloaded = RuntimeState.load(
+            tmp_path / "state.json",
+            default_mode="list",
+            default_context_days=14,
+            default_context_limit=500,
+        )
+        assert reloaded.context_days == 3
+        assert reloaded.context_limit == 42
+
+    async def test_context_rejects_invalid_settings(self) -> None:
+        bot = _make_bot()
+        event = _make_event(pattern_match_groups=("91", "300"))
+
+        await handle_context(event, bot)
+
+        text = event.respond.call_args[0][0]
+        assert "Invalid" in text
 
 
 # ------------------------------------------------------------------
