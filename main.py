@@ -26,12 +26,19 @@ logger = logging.getLogger("telebio")
 # Factory
 # ------------------------------------------------------------------
 
-def _build_provider(settings: Settings) -> BioProvider:
+def _build_provider(
+    settings: Settings,
+    telegram: TelegramService | None = None,
+) -> BioProvider:
     """Instantiate the correct bio provider based on config."""
-    return _build_provider_by_mode(settings.bio_provider, settings)
+    return _build_provider_by_mode(settings.bio_provider, settings, telegram)
 
 
-def _build_provider_by_mode(mode: str, settings: Settings) -> BioProvider:
+def _build_provider_by_mode(
+    mode: str,
+    settings: Settings,
+    telegram: TelegramService | None = None,
+) -> BioProvider:
     """Build a provider for a specific mode."""
     match mode:
         case "list":
@@ -49,8 +56,48 @@ def _build_provider_by_mode(mode: str, settings: Settings) -> BioProvider:
                 model=settings.yandex_model,
                 temperature=settings.yandex_temperature,
             )
+        case "context_prod":
+            from telebio.providers.context_prod_provider import (
+                ContextProdBioProvider,
+                ContextProdProviderConfig,
+            )
+
+            if telegram is None:
+                raise EnvironmentError(
+                    "BIO_PROVIDER=context_prod requires an active TelegramService."
+                )
+            if not settings.yandex_api_key or not settings.yandex_folder_id:
+                raise EnvironmentError(
+                    "BIO_PROVIDER=context_prod requires YANDEX_API_KEY and "
+                    "YANDEX_FOLDER_ID to be set in .env"
+                )
+            return ContextProdBioProvider(
+                telegram=telegram,
+                config=ContextProdProviderConfig(
+                    db_path=settings.context_prod_db_path,
+                    model_dir=settings.context_prod_model_path,
+                    stage1_model=settings.context_prod_stage1_model,
+                    stage2_model=settings.context_prod_stage2_model,
+                    feature_embedding_model=settings.context_prod_feature_embedding_model,
+                    enable_nli_score=settings.context_prod_enable_nli_score,
+                    nli_model=settings.context_prod_nli_model,
+                    yandex_api_key=settings.yandex_api_key,
+                    yandex_folder_id=settings.yandex_folder_id,
+                    yandex_model=settings.yandex_model,
+                    yandex_temperature=settings.yandex_temperature,
+                    fetch_days=settings.context_prod_fetch_days,
+                    min_batch=settings.context_prod_min_batch,
+                    fallback_min_batch=settings.context_prod_fallback_min_batch,
+                    fallback_max_age_days=settings.context_prod_fallback_max_age_days,
+                    max_prompt_messages=settings.context_prod_max_prompt_messages,
+                    dialog_scan_limit=settings.context_prod_dialog_scan_limit,
+                    per_dialog_limit=settings.context_prod_per_dialog_limit,
+                ),
+            )
         case other:
-            raise ValueError(f"Unknown BIO_PROVIDER: '{other}'. Use 'list' or 'llm'.")
+            raise ValueError(
+                f"Unknown BIO_PROVIDER: '{other}'. Use 'list', 'llm', or 'context_prod'."
+            )
 
 
 # ------------------------------------------------------------------
@@ -73,24 +120,29 @@ def _configure_logging(level: str) -> None:
 async def _async_main() -> None:
     settings = load_settings()
     _configure_logging(settings.log_level)
+    scheduler_interval = (
+        settings.context_prod_poll_minutes
+        if settings.bio_provider == "context_prod"
+        else settings.update_interval_minutes
+    )
 
     logger.info("Starting TeleBio (interval=%d min, provider=%s)",
-                settings.update_interval_minutes, settings.bio_provider)
-
-    provider = _build_provider(settings)
-    
-    # Track current mode for dynamic switching
-    current_mode = {"mode": settings.bio_provider}
-    
-    # Provider factory for rebuilding on mode change
-    def provider_factory(mode: str) -> BioProvider:
-        return _build_provider_by_mode(mode, settings)
+                scheduler_interval, settings.bio_provider)
 
     async with TelegramService(
         api_id=settings.api_id,
         api_hash=settings.api_hash,
         session_path=settings.session_path,
     ) as tg:
+        provider = _build_provider(settings, tg)
+
+        # Track current mode for dynamic switching
+        current_mode = {"mode": settings.bio_provider}
+
+        # Provider factory for rebuilding on mode change
+        def provider_factory(mode: str) -> BioProvider:
+            return _build_provider_by_mode(mode, settings, tg)
+
         # Start management bot if token is provided
         bot = None
         if settings.bot_token:
@@ -105,7 +157,7 @@ async def _async_main() -> None:
             )
             await bot.start(owner_id=me.id)
             logger.info("Management bot enabled")
-        
+
         # Graceful shutdown on SIGINT / SIGTERM
         loop = asyncio.get_running_loop()
         stop_event = asyncio.Event()
@@ -119,9 +171,9 @@ async def _async_main() -> None:
 
         scheduler_task = asyncio.create_task(
             run_scheduler(
-                tg, 
-                provider, 
-                settings.update_interval_minutes,
+                tg,
+                provider,
+                scheduler_interval,
                 provider_factory=provider_factory,
                 current_mode=current_mode,
                 bot=bot,

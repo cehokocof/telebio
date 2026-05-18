@@ -24,6 +24,9 @@ async def handle_new(event: events.NewMessage.Event, bot: BotService) -> None:
         provider = bot.provider_factory(mode)
         new_bio = await provider.get_bio()
         await bot.telegram.update_bio(new_bio)
+        commit = getattr(provider, "commit_successful_update", None)
+        if commit:
+            await commit(new_bio)
         bot.record_bio_update(new_bio, mode)
         await event.respond(
             f"✅ Био обновлено:\n<code>{new_bio}</code>",

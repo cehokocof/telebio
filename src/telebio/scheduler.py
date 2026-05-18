@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from telebio.context_exceptions import ContextBatchNotReady
 from telebio.providers.base import BioProvider
 from telebio.services.telegram import TelegramService
 
@@ -13,6 +14,11 @@ if TYPE_CHECKING:
     from telebio.services.bot import BotService
 
 logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class CommitAwareProvider(Protocol):
+    async def commit_successful_update(self, bio: str) -> None: ...
 
 
 async def run_scheduler(
@@ -58,11 +64,16 @@ async def run_scheduler(
             
             new_bio = await active_provider.get_bio()
             await telegram.update_bio(new_bio)
-            
+
+            if isinstance(active_provider, CommitAwareProvider):
+                await active_provider.commit_successful_update(new_bio)
+
             # Record in bot history if bot is available
             if bot and current_mode:
                 bot.record_bio_update(new_bio, current_mode.get("mode", "unknown"))
-                
+
+        except ContextBatchNotReady as exc:
+            logger.info("%s", exc)
         except Exception:
             logger.exception("Unhandled error during bio update — will retry next cycle")
 
