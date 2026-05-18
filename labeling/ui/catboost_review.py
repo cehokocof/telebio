@@ -64,6 +64,7 @@ def render(*, configure_page: bool = True) -> None:
     ).reset_index(drop=True)
 
     _render_progress(dataset)
+    _render_review_summary(dataset)
     if filtered.empty:
         st.success("No rows for current filters.")
         return
@@ -125,6 +126,42 @@ def _render_progress(dataset: pd.DataFrame) -> None:
     cols[1].metric("catboost predictions", predicted)
     cols[2].metric("pending review", pending_review)
     cols[3].metric("accepted", int((dataset["label_source"] == "catboost_accept").sum()))
+
+
+def _render_review_summary(dataset: pd.DataFrame) -> None:
+    reviewed = dataset[dataset["label_source"].isin(["catboost_accept", "manual_review"])].copy()
+    if reviewed.empty:
+        st.caption("No CatBoost review decisions yet.")
+        return
+
+    accepted = int((reviewed["label_source"] == "catboost_accept").sum())
+    overridden = int((reviewed["label_source"] == "manual_review").sum())
+    agreement_rate = accepted / len(reviewed) if len(reviewed) else 0.0
+    cols = st.columns(3)
+    cols[0].metric("reviewed", len(reviewed))
+    cols[1].metric("catboost ok", accepted)
+    cols[2].metric("manual overrides", overridden, f"{agreement_rate:.1%} ok")
+
+    with st.expander("CatBoost review breakdown", expanded=False):
+        display = reviewed.copy()
+        display["catboost"] = display["catboost_label"].map(_format_label)
+        display["final"] = display["label"].map(_format_label)
+        matrix = pd.crosstab(
+            display["catboost"].fillna("missing"),
+            display["final"].fillna("missing"),
+            margins=True,
+        )
+        st.dataframe(matrix, use_container_width=True)
+
+        overrides = display[display["label_source"] == "manual_review"]
+        if not overrides.empty:
+            st.caption("Manual overrides by direction")
+            direction = pd.crosstab(
+                overrides["catboost"].fillna("missing"),
+                overrides["final"].fillna("missing"),
+                margins=True,
+            )
+            st.dataframe(direction, use_container_width=True)
 
 
 def _render_navigation(total_filtered: int) -> None:
@@ -190,28 +227,28 @@ def _render_message(row: pd.Series) -> None:
 def _render_label_buttons(row: pd.Series, *, dataset_path: Path) -> None:
     predicted = int(row["catboost_label"])
     message_id = str(row["message_id"])
-    st.caption("Hotkeys: 1 = drop, 2 = maybe, 3 = keep, 4 = accept CatBoost")
-    cols = st.columns(4)
+    st.caption("Hotkeys: 1 = drop, 2 = maybe, 3 = keep, 4 = accept CatBoost, 5 = skip")
+    cols = st.columns(5)
     cols[0].button(
         "1 Drop",
         key=f"catboost_review_drop_{message_id}",
         use_container_width=True,
         on_click=_apply_label,
-        args=(str(dataset_path), message_id, 1, "manual_review"),
+        args=(str(dataset_path), message_id, 1, _source_for_label(1, predicted)),
     )
     cols[1].button(
         "2 Maybe",
         key=f"catboost_review_maybe_{message_id}",
         use_container_width=True,
         on_click=_apply_label,
-        args=(str(dataset_path), message_id, 2, "manual_review"),
+        args=(str(dataset_path), message_id, 2, _source_for_label(2, predicted)),
     )
     cols[2].button(
         "3 Keep",
         key=f"catboost_review_keep_{message_id}",
         use_container_width=True,
         on_click=_apply_label,
-        args=(str(dataset_path), message_id, 3, "manual_review"),
+        args=(str(dataset_path), message_id, 3, _source_for_label(3, predicted)),
     )
     cols[3].button(
         "4 CatBoost OK",
@@ -220,6 +257,17 @@ def _render_label_buttons(row: pd.Series, *, dataset_path: Path) -> None:
         on_click=_apply_label,
         args=(str(dataset_path), message_id, predicted, "catboost_accept"),
     )
+    cols[4].button(
+        "5 Skip",
+        key=f"catboost_review_skip_action_{message_id}",
+        use_container_width=True,
+        on_click=_move_offset,
+        args=(1, 10**9),
+    )
+
+
+def _source_for_label(label: int, predicted: int) -> str:
+    return "catboost_accept" if label == predicted else "manual_review"
 
 
 def _move_offset(delta: int, total_filtered: int) -> None:
@@ -249,6 +297,13 @@ def _format_score(value: object) -> str:
     return f"{float(value):.3f}"
 
 
+def _format_label(value: object) -> str:
+    if value is None or pd.isna(value):
+        return "missing"
+    label = int(value)
+    return f"{label} {LABELS[label]}"
+
+
 def _inject_hotkeys() -> None:
     components.html(
         """
@@ -267,7 +322,8 @@ def _inject_hotkeys() -> None:
               "1": "1 Drop",
               "2": "2 Maybe",
               "3": "3 Keep",
-              "4": "4 CatBoost OK"
+              "4": "4 CatBoost OK",
+              "5": "5 Skip"
             };
             const label = labels[event.key];
             if (!label) return;

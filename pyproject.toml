@@ -29,6 +29,7 @@ telebio-label-build = "labeling.cli.build_dataset:main"
 telebio-label-fill-scores = "labeling.cli.fill_missing_scores:main"
 telebio-label-train = "labeling.cli.train_catboost:main"
 telebio-label-benchmark-100 = "labeling.benchmarks.benchmark_100_messages:main"
+telebio-label-compare-catboost = "labeling.cli.compare_catboost_models:main"
 
 [dependency-groups]
 dev = [

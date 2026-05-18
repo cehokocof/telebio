@@ -5,6 +5,7 @@ import json
 import pandas as pd
 
 from labeling.core.dataset import build_labeling_dataset, save_dataset, set_label, stable_message_id
+from labeling.ui.catboost_review import _source_for_label
 
 
 def test_build_labeling_dataset_merges_scores(tmp_path):
@@ -89,3 +90,8 @@ def test_set_label_supports_custom_source(tmp_path):
     assert updated.iloc[0]["label"] == 2
     assert updated.iloc[0]["label_name"] == "maybe"
     assert updated.iloc[0]["label_source"] == "catboost_accept"
+
+
+def test_catboost_review_treats_matching_manual_label_as_accept():
+    assert _source_for_label(1, 1) == "catboost_accept"
+    assert _source_for_label(2, 1) == "manual_review"

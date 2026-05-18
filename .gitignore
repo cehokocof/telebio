@@ -14,6 +14,7 @@ wheels/
 logs/
 data/*.parquet
 data/*.cbm
+data/catboost_experiments/
 
 # Virtual environments
 .venv

@@ -10,6 +10,7 @@ import pandas as pd
 
 from labeling.core.dataset import LABELS, SCORE_COLUMNS
 
+TRUE_STATE_TO_LABEL = {name: label for label, name in LABELS.items()}
 TEXT_FEATURES = ["text"]
 CAT_FEATURES = ["dialog"]
 NUMERIC_FEATURES = [
@@ -52,6 +53,8 @@ def train_and_predict(
     from catboost import CatBoostClassifier, Pool
 
     prepared = _prepare_dataset(dataset)
+    if "true_state" in prepared:
+        prepared["label"] = prepared["true_state"].map(TRUE_STATE_TO_LABEL)
     train_df = prepared[prepared["label"].notna()].copy()
     if train_df.empty:
         raise ValueError("No manual labels found in dataset")
