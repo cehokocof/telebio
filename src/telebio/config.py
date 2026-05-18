@@ -43,7 +43,7 @@ class Settings:
     # Interval between bio changes in minutes
     update_interval_minutes: int = 60
 
-    # Provider type: "list" | "llm"
+    # Provider type: "list" | "llm" | "context_prod"
     bio_provider: str = "list"
 
     # Path to the phrases data file (relative to project root)
@@ -51,6 +51,33 @@ class Settings:
 
     # Logging level
     log_level: str = "INFO"
+
+    # YandexGPT settings used by context_prod
+    yandex_api_key: str | None = None
+    yandex_folder_id: str | None = None
+    yandex_model: str = "yandexgpt/latest"
+    yandex_temperature: float = 0.7
+
+    # Production context collection/classification settings
+    context_prod_poll_minutes: int = 60
+    context_prod_fetch_days: int = 7
+    context_prod_min_batch: int = 20
+    context_prod_fallback_min_batch: int = 10
+    context_prod_fallback_max_age_days: int = 7
+    context_prod_max_prompt_messages: int = 20
+    context_prod_db: str = "data/context_prod.sqlite3"
+    context_prod_model_dir: str = "data/prod_models/mix0035"
+    context_prod_stage1_model: str = "cointegrated/rubert-tiny2"
+    context_prod_stage2_model: str = (
+        "sentence-transformers/distiluse-base-multilingual-cased-v2"
+    )
+    context_prod_feature_embedding_model: str = (
+        "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    )
+    context_prod_enable_nli_score: bool = False
+    context_prod_nli_model: str = "cointegrated/rubert-base-cased-nli-threeway"
+    context_prod_dialog_scan_limit: int = 500
+    context_prod_per_dialog_limit: int = 100
 
     # Resolved paths (computed after init)
     project_root: Path = field(default=_PROJECT_ROOT)
@@ -63,6 +90,14 @@ class Settings:
     def session_path(self) -> str:
         """Full path to the Telethon .session file (without extension)."""
         return str(self.project_root / self.session_name)
+
+    @property
+    def context_prod_db_path(self) -> Path:
+        return self.project_root / self.context_prod_db
+
+    @property
+    def context_prod_model_path(self) -> Path:
+        return self.project_root / self.context_prod_model_dir
 
 
 def load_settings() -> Settings:
@@ -77,4 +112,53 @@ def load_settings() -> Settings:
         bio_provider=_get_env("BIO_PROVIDER", default="list"),
         phrases_file=_get_env("PHRASES_FILE", default="data/phrases.json"),
         log_level=_get_env("LOG_LEVEL", default="INFO"),
+        yandex_api_key=_get_env("YANDEX_API_KEY", default=None),
+        yandex_folder_id=_get_env("YANDEX_FOLDER_ID", default=None),
+        yandex_model=_get_env("YANDEX_MODEL", default="yandexgpt/latest"),
+        yandex_temperature=float(_get_env("YANDEX_TEMPERATURE", default="0.7")),
+        context_prod_poll_minutes=int(
+            _get_env("CONTEXT_PROD_POLL_MINUTES", default="60")
+        ),
+        context_prod_fetch_days=int(_get_env("CONTEXT_PROD_FETCH_DAYS", default="7")),
+        context_prod_min_batch=int(_get_env("CONTEXT_PROD_MIN_BATCH", default="20")),
+        context_prod_fallback_min_batch=int(
+            _get_env("CONTEXT_PROD_FALLBACK_MIN_BATCH", default="10")
+        ),
+        context_prod_fallback_max_age_days=int(
+            _get_env("CONTEXT_PROD_FALLBACK_MAX_AGE_DAYS", default="7")
+        ),
+        context_prod_max_prompt_messages=int(
+            _get_env("CONTEXT_PROD_MAX_PROMPT_MESSAGES", default="20")
+        ),
+        context_prod_db=_get_env(
+            "CONTEXT_PROD_DB", default="data/context_prod.sqlite3"
+        ),
+        context_prod_model_dir=_get_env(
+            "CONTEXT_PROD_MODEL_DIR", default="data/prod_models/mix0035"
+        ),
+        context_prod_stage1_model=_get_env(
+            "CONTEXT_PROD_STAGE1_MODEL", default="cointegrated/rubert-tiny2"
+        ),
+        context_prod_stage2_model=_get_env(
+            "CONTEXT_PROD_STAGE2_MODEL",
+            default="sentence-transformers/distiluse-base-multilingual-cased-v2",
+        ),
+        context_prod_feature_embedding_model=_get_env(
+            "CONTEXT_PROD_FEATURE_EMBEDDING_MODEL",
+            default="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        ),
+        context_prod_enable_nli_score=_get_env(
+            "CONTEXT_PROD_ENABLE_NLI_SCORE", default="false"
+        ).lower()
+        in {"1", "true", "yes", "on"},
+        context_prod_nli_model=_get_env(
+            "CONTEXT_PROD_NLI_MODEL",
+            default="cointegrated/rubert-base-cased-nli-threeway",
+        ),
+        context_prod_dialog_scan_limit=int(
+            _get_env("CONTEXT_PROD_DIALOG_SCAN_LIMIT", default="500")
+        ),
+        context_prod_per_dialog_limit=int(
+            _get_env("CONTEXT_PROD_PER_DIALOG_LIMIT", default="100")
+        ),
     )

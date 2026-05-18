@@ -1,6 +1,8 @@
 # Environment & secrets
 .env
 *.session
+data/context_prod.sqlite3
+data/prod_models/
 
 # Python-generated files
 __pycache__/

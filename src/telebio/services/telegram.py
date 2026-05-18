@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import UTC, datetime, timedelta
 
 from telethon import TelegramClient, errors, functions
+from telethon.tl.types import Message
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +68,100 @@ class TelegramService:
             raise
 
     # ------------------------------------------------------------------
+    # Context collection
+    # ------------------------------------------------------------------
+
+    async def collect_recent_outgoing_texts(
+        self,
+        *,
+        days: int,
+        limit: int,
+        dialog_scan_limit: int,
+        per_dialog_limit: int,
+    ) -> list["ContextMessage"]:
+        """Collect recent outgoing text messages across dialogs."""
+        from telebio.context_prod import ContextMessage
+
+        cutoff = datetime.now(UTC) - timedelta(days=days)
+        collected: list[ContextMessage] = []
+        inspected = 0
+        dialogs_seen = 0
+
+        logger.info(
+            "Collecting context messages (days=%d, limit=%d, dialogs<=%d, per_dialog<=%d)",
+            days,
+            limit,
+            dialog_scan_limit,
+            per_dialog_limit,
+        )
+
+        async for dialog in self._client.iter_dialogs(limit=dialog_scan_limit):
+            dialogs_seen += 1
+            entity = getattr(dialog, "entity", None)
+            if entity is None:
+                continue
+
+            peer_id = getattr(entity, "id", None)
+            title = getattr(dialog, "name", None) or getattr(entity, "title", None)
+            if not title:
+                title = getattr(entity, "username", None) or str(peer_id or "unknown")
+
+            try:
+                async for message in self._client.iter_messages(
+                    entity,
+                    limit=per_dialog_limit,
+                    from_user="me",
+                ):
+                    inspected += 1
+                    if len(collected) >= limit:
+                        break
+                    if not isinstance(message, Message) or not message.out:
+                        continue
+                    if message.date is None:
+                        continue
+                    message_date = message.date
+                    if message_date.tzinfo is None:
+                        message_date = message_date.replace(tzinfo=UTC)
+                    message_date = message_date.astimezone(UTC)
+                    if message_date < cutoff:
+                        break
+
+                    text = message.raw_text or message.message or ""
+                    text = text.strip()
+                    if not text:
+                        continue
+
+                    msg_peer_id = _message_peer_id(message) or peer_id
+                    msg_key = f"{msg_peer_id or 'unknown'}:{message.id}"
+                    collected.append(
+                        ContextMessage(
+                            message_key=msg_key,
+                            message_id=message.id,
+                            peer_id=msg_peer_id,
+                            dialog_title=str(title),
+                            date=message_date,
+                            text=text,
+                        )
+                    )
+            except errors.FloodWaitError:
+                raise
+            except Exception as exc:
+                logger.warning("Skipping dialog %s while collecting context: %s", title, exc)
+
+            if len(collected) >= limit:
+                break
+
+        collected.sort(key=lambda item: (item.date, item.message_key))
+        logger.info(
+            "Collected %d outgoing messages for context (days=%d, dialogs=%d, inspected=%d)",
+            len(collected),
+            days,
+            dialogs_seen,
+            inspected,
+        )
+        return collected
+
+    # ------------------------------------------------------------------
     # Context manager support
     # ------------------------------------------------------------------
 
@@ -75,3 +171,14 @@ class TelegramService:
 
     async def __aexit__(self, *_exc) -> None:
         await self.stop()
+
+
+def _message_peer_id(message: Message) -> int | None:
+    peer = getattr(message, "peer_id", None)
+    if peer is None:
+        return None
+    for attr in ("channel_id", "chat_id", "user_id"):
+        value = getattr(peer, attr, None)
+        if value is not None:
+            return int(value)
+    return None
