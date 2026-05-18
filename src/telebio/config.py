@@ -37,6 +37,9 @@ class Settings:
     api_id: int
     api_hash: str
 
+    # Bot token for management bot (optional)
+    bot_token: str = ""
+
     # Session name for Telethon (stored in project root)
     session_name: str = "telebio"
 
@@ -49,14 +52,17 @@ class Settings:
     # Path to the phrases data file (relative to project root)
     phrases_file: str = "data/phrases.json"
 
+    # Path to few-shot examples for LLM provider (relative to project root)
+    examples_file: str = "data/examples.json"
+
+    # ── YandexGPT settings (required only for llm/context_prod providers) ──
+    yandex_api_key: str = ""
+    yandex_folder_id: str = ""
+    yandex_model: str = "yandexgpt-lite/latest"
+    yandex_temperature: float = 0.9
+
     # Logging level
     log_level: str = "INFO"
-
-    # YandexGPT settings used by context_prod
-    yandex_api_key: str | None = None
-    yandex_folder_id: str | None = None
-    yandex_model: str = "yandexgpt/latest"
-    yandex_temperature: float = 0.7
 
     # Production context collection/classification settings
     context_prod_poll_minutes: int = 60
@@ -87,6 +93,10 @@ class Settings:
         return self.project_root / self.phrases_file
 
     @property
+    def examples_path(self) -> Path:
+        return self.project_root / self.examples_file
+
+    @property
     def session_path(self) -> str:
         """Full path to the Telethon .session file (without extension)."""
         return str(self.project_root / self.session_name)
@@ -105,17 +115,21 @@ def load_settings() -> Settings:
     return Settings(
         api_id=int(_get_env("TELEGRAM_API_ID", required=True)),
         api_hash=_get_env("TELEGRAM_API_HASH", required=True),
+        bot_token=_get_env("BOT_TOKEN", default=""),
         session_name=_get_env("SESSION_NAME", default="telebio"),
         update_interval_minutes=int(
             _get_env("UPDATE_INTERVAL_MINUTES", default="60")
         ),
         bio_provider=_get_env("BIO_PROVIDER", default="list"),
         phrases_file=_get_env("PHRASES_FILE", default="data/phrases.json"),
+        examples_file=_get_env("EXAMPLES_FILE", default="data/examples.json"),
+        yandex_api_key=_get_env("YANDEX_API_KEY", default=""),
+        yandex_folder_id=_get_env("YANDEX_FOLDER_ID", default=""),
+        yandex_model=_get_env("YANDEX_MODEL", default="yandexgpt-lite/latest"),
+        yandex_temperature=float(
+            _get_env("YANDEX_TEMPERATURE", default="0.9")
+        ),
         log_level=_get_env("LOG_LEVEL", default="INFO"),
-        yandex_api_key=_get_env("YANDEX_API_KEY", default=None),
-        yandex_folder_id=_get_env("YANDEX_FOLDER_ID", default=None),
-        yandex_model=_get_env("YANDEX_MODEL", default="yandexgpt/latest"),
-        yandex_temperature=float(_get_env("YANDEX_TEMPERATURE", default="0.7")),
         context_prod_poll_minutes=int(
             _get_env("CONTEXT_PROD_POLL_MINUTES", default="60")
         ),
