@@ -73,6 +73,10 @@ class QueuedContextMessage:
 class ContextBatch:
     messages: list[QueuedContextMessage]
     reason: str
+    pending_keep_count: int = 0
+    pending_maybe_count: int = 0
+    included_keep_count: int = 0
+    included_maybe_count: int = 0
 
 
 class ContextProdStore:
@@ -159,23 +163,42 @@ class ContextProdStore:
         fallback_min_batch: int,
         fallback_max_age_days: int,
         max_prompt_messages: int,
+        max_maybe_messages: int,
     ) -> ContextBatch | None:
         selected = self.pending_selected_messages()
+        prompt_messages = _select_prompt_messages(
+            selected,
+            max_prompt_messages=max_prompt_messages,
+            max_maybe_messages=max_maybe_messages,
+        )
+        pending_keep_count = _label_count(selected, "keep")
+        pending_maybe_count = _label_count(selected, "maybe")
+        included_keep_count = _label_count(prompt_messages, "keep")
+        included_maybe_count = _label_count(prompt_messages, "maybe")
+
         if len(selected) >= min_batch:
             return ContextBatch(
-                messages=selected[-max_prompt_messages:],
+                messages=prompt_messages,
                 reason=f"min_batch:{len(selected)}>={min_batch}",
+                pending_keep_count=pending_keep_count,
+                pending_maybe_count=pending_maybe_count,
+                included_keep_count=included_keep_count,
+                included_maybe_count=included_maybe_count,
             )
 
         if len(selected) >= fallback_min_batch:
             oldest = selected[0].date
             if datetime.now(UTC) - oldest >= timedelta(days=fallback_max_age_days):
                 return ContextBatch(
-                    messages=selected[-max_prompt_messages:],
+                    messages=prompt_messages,
                     reason=(
                         f"fallback:{len(selected)}>={fallback_min_batch},"
                         f"oldest>={fallback_max_age_days}d"
                     ),
+                    pending_keep_count=pending_keep_count,
+                    pending_maybe_count=pending_maybe_count,
+                    included_keep_count=included_keep_count,
+                    included_maybe_count=included_maybe_count,
                 )
         return None
 
@@ -495,6 +518,29 @@ def _heuristic_score(text: str, words: list[str]) -> float:
     if any(marker in text.lower() for marker in ("думаю", "делаю", "нужно", "хочу", "сейчас")):
         score += 0.15
     return min(score, 1.0)
+
+
+def _select_prompt_messages(
+    messages: list[QueuedContextMessage],
+    *,
+    max_prompt_messages: int,
+    max_maybe_messages: int,
+) -> list[QueuedContextMessage]:
+    maybe_limit = max(0, min(max_maybe_messages, max_prompt_messages))
+    keep_limit = max(0, max_prompt_messages - maybe_limit)
+
+    keep = [message for message in messages if message.label == "keep"]
+    maybe = [message for message in messages if message.label == "maybe"]
+
+    selected = keep[-keep_limit:] if keep_limit else []
+    if maybe_limit:
+        selected = [*selected, *maybe[-maybe_limit:]]
+
+    return sorted(selected, key=lambda message: (message.date, message.id))
+
+
+def _label_count(messages: list[QueuedContextMessage], label: ContextLabel) -> int:
+    return sum(1 for message in messages if message.label == label)
 
 
 def _queued_from_row(row: sqlite3.Row) -> QueuedContextMessage:

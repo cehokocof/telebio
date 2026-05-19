@@ -71,6 +71,7 @@ class Settings:
     context_prod_fallback_min_batch: int = 10
     context_prod_fallback_max_age_days: int = 7
     context_prod_max_prompt_messages: int = 20
+    context_prod_max_maybe_prompt_messages: int = 5
     context_prod_db: str = "data/context_prod.sqlite3"
     context_prod_model_dir: str = "data/prod_models/mix0035"
     context_prod_stage1_model: str = "cointegrated/rubert-tiny2"
@@ -143,6 +144,9 @@ def load_settings() -> Settings:
         ),
         context_prod_max_prompt_messages=int(
             _get_env("CONTEXT_PROD_MAX_PROMPT_MESSAGES", default="20")
+        ),
+        context_prod_max_maybe_prompt_messages=int(
+            _get_env("CONTEXT_PROD_MAX_MAYBE_PROMPT_MESSAGES", default="5")
         ),
         context_prod_db=_get_env(
             "CONTEXT_PROD_DB", default="data/context_prod.sqlite3"

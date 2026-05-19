@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import httpx
 
@@ -15,6 +16,9 @@ from telebio.context_prod import (
     Mix0035Classifier,
 )
 from telebio.services.telegram import TelegramService
+
+if TYPE_CHECKING:
+    from telebio.context_prod import QueuedContextMessage
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +44,7 @@ class ContextProdProviderConfig:
     fallback_min_batch: int
     fallback_max_age_days: int
     max_prompt_messages: int
+    max_maybe_prompt_messages: int
     dialog_scan_limit: int
     per_dialog_limit: int
 
@@ -103,6 +108,7 @@ class ContextProdBioProvider:
             fallback_min_batch=self._config.fallback_min_batch,
             fallback_max_age_days=self._config.fallback_max_age_days,
             max_prompt_messages=self._config.max_prompt_messages,
+            max_maybe_messages=self._config.max_maybe_prompt_messages,
         )
         pending_count = len(self._store.pending_selected_messages())
         if batch is None:
@@ -120,15 +126,7 @@ class ContextProdBioProvider:
             batch.reason,
             pending_count,
         )
-        for index, message in enumerate(batch.messages, start=1):
-            logger.info(
-                "Context batch message %03d | %s | %s | %s | %s",
-                index,
-                message.date.isoformat(),
-                message.label,
-                message.dialog_title,
-                _one_line(message.text),
-            )
+        _log_prompt_context(batch)
 
         bio = await self._generate_bio(batch)
         self._pending_batch = batch
@@ -195,18 +193,76 @@ class ContextProdBioProvider:
 
 
 def _build_prompt(batch: ContextBatch) -> str:
+    keep_messages = [message for message in batch.messages if message.label == "keep"]
+    maybe_messages = [message for message in batch.messages if message.label == "maybe"]
+
     lines = [
         "Сделай новое bio по моим последним содержательным исходящим сообщениям.",
         "Цель: отразить, что у меня сейчас происходит, без пересказа и без имен собеседников.",
+        "Сильный контекст важнее слабого.",
+        "Слабые сигналы используй только если они усиливают общую картину.",
+        "Не делай bio только по одному слабому сообщению.",
+        "drop-сообщения уже отфильтрованы и не переданы в этот запрос.",
         "",
-        "Сообщения:",
+        "Сильный контекст (keep):",
     ]
-    for message in batch.messages:
-        lines.append(
-            f"- [{message.date:%Y-%m-%d %H:%M}, {message.label}, {message.dialog_title}] "
-            f"{_one_line(message.text, limit=500)}"
-        )
+    if keep_messages:
+        for message in keep_messages:
+            lines.append(_prompt_message_line(message))
+    else:
+        lines.append("- нет")
+
+    lines.extend(["", "Слабые дополнительные сигналы (maybe):"])
+    if maybe_messages:
+        for message in maybe_messages:
+            lines.append(_prompt_message_line(message))
+    else:
+        lines.append("- нет")
+
     return "\n".join(lines)
+
+
+def _prompt_message_line(message: "QueuedContextMessage") -> str:
+    return (
+        f"- [{message.date:%Y-%m-%d %H:%M}, {message.dialog_title}] "
+        f"{_one_line(message.text, limit=500)}"
+    )
+
+
+def _log_prompt_context(batch: ContextBatch) -> None:
+    logger.info(
+        "Context prompt split | pending_keep=%d pending_maybe=%d "
+        "included_keep=%d included_maybe=%d excluded_keep_by_limit=%d "
+        "excluded_maybe_by_limit=%d drop_sent=0",
+        batch.pending_keep_count,
+        batch.pending_maybe_count,
+        batch.included_keep_count,
+        batch.included_maybe_count,
+        max(0, batch.pending_keep_count - batch.included_keep_count),
+        max(0, batch.pending_maybe_count - batch.included_maybe_count),
+    )
+
+    keep_index = 0
+    maybe_index = 0
+    for message in batch.messages:
+        if message.label == "keep":
+            keep_index += 1
+            logger.info(
+                "Context prompt KEEP %03d | %s | %s | %s",
+                keep_index,
+                message.date.isoformat(),
+                message.dialog_title,
+                _one_line(message.text),
+            )
+        elif message.label == "maybe":
+            maybe_index += 1
+            logger.info(
+                "Context prompt MAYBE %03d | %s | %s | %s",
+                maybe_index,
+                message.date.isoformat(),
+                message.dialog_title,
+                _one_line(message.text),
+            )
 
 
 def _model_uri(folder_id: str, model: str) -> str:

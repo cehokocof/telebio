@@ -90,6 +90,9 @@ def _build_provider_by_mode(
                     fallback_min_batch=settings.context_prod_fallback_min_batch,
                     fallback_max_age_days=settings.context_prod_fallback_max_age_days,
                     max_prompt_messages=settings.context_prod_max_prompt_messages,
+                    max_maybe_prompt_messages=(
+                        settings.context_prod_max_maybe_prompt_messages
+                    ),
                     dialog_scan_limit=settings.context_prod_dialog_scan_limit,
                     per_dialog_limit=settings.context_prod_per_dialog_limit,
                 ),
