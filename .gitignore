@@ -2,7 +2,11 @@
 .env
 *.session
 data/context_prod.sqlite3
+data/*.parquet
+data/*.cbm
 data/prod_models/
+logs/
+telebio_state.json
 
 # Python-generated files
 __pycache__/

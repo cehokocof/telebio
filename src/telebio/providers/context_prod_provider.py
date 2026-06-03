@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -28,7 +30,8 @@ _YANDEX_COMPLETION_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/c
 
 @dataclass(frozen=True, slots=True)
 class ContextProdProviderConfig:
-    db_path: Path
+    dataset_path: Path
+    report_dir: Path
     model_dir: Path
     stage1_model: str
     stage2_model: str
@@ -47,6 +50,8 @@ class ContextProdProviderConfig:
     max_maybe_prompt_messages: int
     dialog_scan_limit: int
     per_dialog_limit: int
+    merge_gap_seconds: int = 0
+    max_message_length: int = 0
 
 
 class ContextProdBioProvider:
@@ -60,7 +65,7 @@ class ContextProdBioProvider:
     ) -> None:
         self._telegram = telegram
         self._config = config
-        self._store = ContextProdStore(config.db_path)
+        self._store = ContextProdStore(config.dataset_path)
         self._classifier = Mix0035Classifier(
             config.model_dir,
             stage1_model_name=config.stage1_model,
@@ -68,13 +73,14 @@ class ContextProdBioProvider:
             feature_embedding_model_name=config.feature_embedding_model,
             enable_nli_score=config.enable_nli_score,
             nli_model_name=config.nli_model,
+            max_message_length=config.max_message_length,
         )
         self._pending_batch: ContextBatch | None = None
         self._pending_bio: str | None = None
         logger.info(
-            "ContextProdBioProvider initialised (db=%s, model_dir=%s, fetch_days=%d, "
+            "ContextProdBioProvider initialised (dataset=%s, model_dir=%s, fetch_days=%d, "
             "min_batch=%d, fallback=%d/%dd)",
-            config.db_path,
+            config.dataset_path,
             config.model_dir,
             config.fetch_days,
             config.min_batch,
@@ -82,49 +88,16 @@ class ContextProdBioProvider:
             config.fallback_max_age_days,
         )
 
-    async def get_bio(self) -> str:
-        """Refresh context queue and return a new generated bio when ready."""
+    async def get_bio(self, *, force: bool = False) -> str:
+        """Return a generated bio from the already collected parquet dataset."""
         self._pending_batch = None
         self._pending_bio = None
-
-        collected = await self._telegram.collect_recent_outgoing_texts(
-            days=self._config.fetch_days,
-            limit=self._config.dialog_scan_limit * self._config.per_dialog_limit,
-            dialog_scan_limit=self._config.dialog_scan_limit,
-            per_dialog_limit=self._config.per_dialog_limit,
-        )
-        inserted = self._store.upsert_messages(collected)
-        logger.info("Context queue refreshed: collected=%d inserted=%d", len(collected), inserted)
-
-        unclassified = self._store.unclassified_messages(limit=2000)
-        if unclassified:
-            labels = self._classifier.classify(unclassified)
-            self._store.save_labels(labels)
-        else:
-            logger.info("No new context messages require classification")
-
-        batch = self._store.ready_batch(
-            min_batch=self._config.min_batch,
-            fallback_min_batch=self._config.fallback_min_batch,
-            fallback_max_age_days=self._config.fallback_max_age_days,
-            max_prompt_messages=self._config.max_prompt_messages,
-            max_maybe_messages=self._config.max_maybe_prompt_messages,
-        )
-        pending_count = len(self._store.pending_selected_messages())
-        if batch is None:
-            raise ContextBatchNotReady(
-                "Context batch is not ready: "
-                f"pending maybe/keep={pending_count}, "
-                f"need {self._config.min_batch} or fallback "
-                f"{self._config.fallback_min_batch} after "
-                f"{self._config.fallback_max_age_days}d"
-            )
+        batch = self._ready_batch_or_raise(force=force)
 
         logger.info(
-            "Generating context bio from %d messages (reason=%s, pending=%d)",
+            "Generating context bio from %d pre-collected messages (reason=%s)",
             len(batch.messages),
             batch.reason,
-            pending_count,
         )
         _log_prompt_context(batch)
 
@@ -132,6 +105,30 @@ class ContextProdBioProvider:
         self._pending_batch = batch
         self._pending_bio = bio
         return bio
+
+    async def collect_context(self) -> dict[str, int]:
+        """Collect recent outgoing messages and classify only new parquet rows."""
+        collected = await self._telegram.collect_recent_outgoing_texts(
+            days=self._config.fetch_days,
+            limit=self._config.dialog_scan_limit * self._config.per_dialog_limit,
+            dialog_scan_limit=self._config.dialog_scan_limit,
+            per_dialog_limit=self._config.per_dialog_limit,
+            merge_gap_seconds=self._config.merge_gap_seconds,
+        )
+        changed = self._store.upsert_messages(collected)
+        unclassified = self._store.unclassified_messages(limit=2000)
+        labels = self._classifier.classify(unclassified) if unclassified else {}
+        self._store.save_labels(labels)
+        pending = self._store.pending_selected_messages()
+        counts = {
+            "collected": len(collected),
+            "changed_rows": changed,
+            "classified": len(labels),
+            "pending_keep": sum(1 for message in pending if message.label == "keep"),
+            "pending_maybe": sum(1 for message in pending if message.label == "maybe"),
+        }
+        logger.info("Context collect completed: %s", counts)
+        return counts
 
     async def commit_successful_update(self, bio: str) -> None:
         """Mark messages used only after Telegram accepted the generated bio."""
@@ -148,6 +145,14 @@ class ContextProdBioProvider:
 
     async def _generate_bio(self, batch: ContextBatch) -> str:
         prompt = _build_prompt(batch)
+        report_path = _write_api_report(
+            self._config.report_dir,
+            batch=batch,
+            prompt=prompt,
+            model_uri=_model_uri(self._config.yandex_folder_id, self._config.yandex_model),
+            generated_bio=None,
+        )
+        logger.info("Context API request report saved: %s", report_path)
         headers = {
             "Authorization": f"Api-Key {self._config.yandex_api_key}",
             "x-folder-id": self._config.yandex_folder_id,
@@ -166,9 +171,14 @@ class ContextProdBioProvider:
                 {
                     "role": "system",
                     "text": (
-                        "Ты пишешь короткое Telegram bio на русском. "
-                        "До 70 символов. Без кавычек, без эмодзи, без пояснений. "
-                        "Сохраняй живой стиль автора, но не копируй личные данные."
+                        "Ты пишешь короткое Telegram bio на русском: смешное, "
+                        "саркастичное, живое, с легкой самоиронией. Формат: "
+                        "ровно 2 строки, каждая начинается с дефиса и пробела. "
+                        "Каждая строка ≤ 32 символа и обязательно ЗАКОНЧЕННАЯ "
+                        "мысль — нельзя обрывать на предлоге, союзе, частице "
+                        "или посреди слова. Если не помещается — переформулируй "
+                        "короче, не обрезай. Без кавычек, без эмодзи, без "
+                        "пояснений. Не раскрывай личные данные и имена собеседников."
                     ),
                 },
                 {"role": "user", "text": prompt},
@@ -179,17 +189,45 @@ class ContextProdBioProvider:
             response.raise_for_status()
             data = response.json()
 
-        text = (
+        raw_text = (
             data["result"]["alternatives"][0]["message"]["text"]
             .strip()
             .strip('"')
             .strip("'")
         )
-        if len(text) > _TELEGRAM_BIO_MAX_LENGTH:
-            text = text[:_TELEGRAM_BIO_MAX_LENGTH].rstrip()
+        text = _normalise_generated_bio(raw_text)
         if not text:
             raise RuntimeError("YandexGPT returned an empty bio")
+        _write_api_report(
+            self._config.report_dir,
+            batch=batch,
+            prompt=prompt,
+            model_uri=_model_uri(self._config.yandex_folder_id, self._config.yandex_model),
+            generated_bio=text,
+            report_path=report_path,
+        )
         return text
+
+    def _ready_batch_or_raise(self, *, force: bool = False) -> ContextBatch:
+        batch = self._store.ready_batch(
+            min_batch=self._config.min_batch,
+            fallback_min_batch=self._config.fallback_min_batch,
+            fallback_max_age_days=self._config.fallback_max_age_days,
+            max_prompt_messages=self._config.max_prompt_messages,
+            max_maybe_messages=self._config.max_maybe_prompt_messages,
+            force=force,
+            force_max_age_days=self._config.fetch_days,
+        )
+        pending_count = len(self._store.pending_selected_messages())
+        if batch is None:
+            raise ContextBatchNotReady(
+                "Context batch is not ready: "
+                f"pending maybe/keep={pending_count}, "
+                f"need {self._config.min_batch} or fallback "
+                f"{self._config.fallback_min_batch} after "
+                f"{self._config.fallback_max_age_days}d"
+            )
+        return batch
 
 
 def _build_prompt(batch: ContextBatch) -> str:
@@ -197,14 +235,27 @@ def _build_prompt(batch: ContextBatch) -> str:
     maybe_messages = [message for message in batch.messages if message.label == "maybe"]
 
     lines = [
-        "Сделай новое bio по моим последним содержательным исходящим сообщениям.",
-        "Цель: отразить, что у меня сейчас происходит, без пересказа и без имен собеседников.",
-        "Сильный контекст важнее слабого.",
-        "Слабые сигналы используй только если они усиливают общую картину.",
-        "Не делай bio только по одному слабому сообщению.",
-        "drop-сообщения уже отфильтрованы и не переданы в этот запрос.",
+        "- Задача: придумай новое Telegram bio по моим последним сообщениям.",
+        "- Стиль: смешно, саркастично, немного дерзко, но без кринжового стендапа.",
+        "- Не делай сухое summary. Лучше возьми 1-2 конкретные детали из сообщений "
+        "и преврати их в короткую фразу.",
+        "- Можно прямо использовать удачные куски формулировок из сообщений, но без кавычек.",
+        "- Не пиши имена собеседников, даты, команды, ссылки и приватные детали.",
+        "- Сильный контекст важнее слабого.",
+        "- Слабые сигналы используй только если они добавляют смешную или точную деталь.",
+        "- Не делай bio только по одному слабому сообщению.",
+        "- drop-сообщения уже отфильтрованы и не переданы в этот запрос.",
+        "- Финальный ответ: только bio, ровно 2 строки.",
+        "- Каждая строка итогового bio должна начинаться с - и пробела.",
+        "- Каждая строка ≤ 32 символа И обязательно ЗАКОНЧЕННАЯ мысль.",
+        "- Нельзя обрывать строку на предлоге (в, на, за, с, к, у, для, "
+        "из, по, при, о, об), союзе (и, а, но, или, что), частице (не, "
+        "же, ли, бы, уже) или посреди слова.",
+        "- Если мысль не помещается в 32 символа — переформулируй короче, "
+        "не обрезай на полуслове.",
+        "- Всё bio суммарно ≤ 70 символов (это лимит Telegram).",
         "",
-        "Сильный контекст (keep):",
+        "- Сильный контекст keep:",
     ]
     if keep_messages:
         for message in keep_messages:
@@ -212,7 +263,7 @@ def _build_prompt(batch: ContextBatch) -> str:
     else:
         lines.append("- нет")
 
-    lines.extend(["", "Слабые дополнительные сигналы (maybe):"])
+    lines.extend(["", "- Слабые дополнительные сигналы maybe:"])
     if maybe_messages:
         for message in maybe_messages:
             lines.append(_prompt_message_line(message))
@@ -265,6 +316,48 @@ def _log_prompt_context(batch: ContextBatch) -> None:
             )
 
 
+def _write_api_report(
+    report_dir: Path,
+    *,
+    batch: ContextBatch,
+    prompt: str,
+    model_uri: str,
+    generated_bio: str | None,
+    report_path: Path | None = None,
+) -> Path:
+    report_dir.mkdir(parents=True, exist_ok=True)
+    if report_path is None:
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        report_path = report_dir / f"context_api_request_{stamp}.json"
+    payload = {
+        "created_at": datetime.now(UTC).isoformat(),
+        "model_uri": model_uri,
+        "reason": batch.reason,
+        "counts": {
+            "pending_keep": batch.pending_keep_count,
+            "pending_maybe": batch.pending_maybe_count,
+            "included_keep": batch.included_keep_count,
+            "included_maybe": batch.included_maybe_count,
+            "drop_sent": 0,
+        },
+        "messages": [
+            {
+                "row_id": message.id,
+                "message_key": message.message_key,
+                "date": message.date.isoformat(),
+                "dialog": message.dialog_title,
+                "label": message.label,
+                "text": message.text,
+            }
+            for message in batch.messages
+        ],
+        "prompt": prompt,
+        "generated_bio": generated_bio,
+    }
+    report_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return report_path
+
+
 def _model_uri(folder_id: str, model: str) -> str:
     if model.startswith("gpt://"):
         return model
@@ -276,3 +369,47 @@ def _one_line(text: str, *, limit: int = 240) -> str:
     if len(value) <= limit:
         return value
     return value[: limit - 1].rstrip() + "…"
+
+
+def _normalise_generated_bio(text: str) -> str:
+    lines = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip().strip('"').strip("'")
+        if not line:
+            continue
+        if line.startswith("-"):
+            line = line[1:].strip()
+        line = " ".join(line.split())
+        if not line:
+            continue
+        lines.append(f"- {_truncate_line(line, limit=30)}")
+
+    if not lines and text.strip():
+        lines = [f"- {_truncate_line(text.strip(), limit=30)}"]
+
+    selected: list[str] = []
+    for line in lines[:3]:
+        candidate = "\n".join([*selected, line])
+        if len(candidate) > _TELEGRAM_BIO_MAX_LENGTH:
+            break
+        selected.append(line)
+
+    result = "\n".join(selected).strip()
+    if len(result) <= _TELEGRAM_BIO_MAX_LENGTH:
+        return result
+    return _truncate_line(result, limit=_TELEGRAM_BIO_MAX_LENGTH)
+
+
+def _truncate_line(text: str, *, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    words = text.split()
+    result = ""
+    for word in words:
+        candidate = f"{result} {word}".strip()
+        if len(candidate) > limit:
+            break
+        result = candidate
+    if result:
+        return result.rstrip(" ,.;:-")
+    return text[:limit].rstrip(" ,.;:-")
