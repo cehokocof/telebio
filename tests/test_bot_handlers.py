@@ -15,6 +15,8 @@ from telebio.services.handlers.history import handle_history
 from telebio.services.handlers.set_mode import handle_set_mode
 from telebio.services.handlers.new import handle_new
 from telebio.services.handlers.pause import handle_pause
+from telebio.services.handlers.update_context import handle_update_context
+from telebio.context_exceptions import ContextBatchNotReady
 
 
 # ------------------------------------------------------------------
@@ -239,6 +241,28 @@ class TestHandleNew:
         text = event.respond.call_args[0][0]
         assert "Ошибка" in text
 
+    async def test_new_handles_context_batch_not_ready_without_error(self) -> None:
+        mock_tg = AsyncMock()
+
+        def factory(_mode):
+            p = AsyncMock()
+            p.get_bio.side_effect = ContextBatchNotReady("pending maybe/keep=9")
+            return p
+
+        bot = _make_bot(
+            current_mode={"mode": "context_prod"},
+            telegram=mock_tg,
+            provider_factory=factory,
+        )
+        event = _make_event()
+
+        await handle_new(event, bot)
+
+        mock_tg.update_bio.assert_not_awaited()
+        text = event.respond.call_args[0][0]
+        assert "batch ещё не готов" in text
+        assert "/collect_context" in text
+
     async def test_new_uses_current_mode(self) -> None:
         mock_tg = AsyncMock()
         captured_modes: list[str] = []
@@ -259,6 +283,33 @@ class TestHandleNew:
         await handle_new(event, bot)
 
         assert captured_modes == ["llm"]
+
+
+# ------------------------------------------------------------------
+# /update_context
+# ------------------------------------------------------------------
+
+
+class TestHandleUpdateContext:
+
+    async def test_update_context_handles_batch_not_ready_without_update(self) -> None:
+        mock_tg = AsyncMock()
+
+        def factory(mode: str):
+            assert mode == "context_prod"
+            p = AsyncMock()
+            p.get_bio.side_effect = ContextBatchNotReady("pending maybe/keep=9")
+            return p
+
+        bot = _make_bot(telegram=mock_tg, provider_factory=factory)
+        event = _make_event()
+
+        await handle_update_context(event, bot)
+
+        mock_tg.update_bio.assert_not_awaited()
+        text = event.respond.call_args[0][0]
+        assert "batch ещё не готов" in text
+        assert "/collect_context" in text
 
 
 # ------------------------------------------------------------------

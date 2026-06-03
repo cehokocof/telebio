@@ -8,13 +8,13 @@ import logging
 import math
 import pickle
 import re
-import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Iterable, Literal
 
 import numpy as np
+import pandas as pd
 from catboost import CatBoostClassifier
 from sentence_transformers import SentenceTransformer
 
@@ -80,81 +80,93 @@ class ContextBatch:
 
 
 class ContextProdStore:
-    """SQLite-backed queue for collected messages and generated batches."""
+    """Parquet-backed context dataset used by runtime and future training."""
 
-    def __init__(self, db_path: Path) -> None:
-        self._db_path = db_path
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._init_schema()
+    _columns = (
+        "row_id",
+        "message_key",
+        "message_id",
+        "peer_id",
+        "dialog_title",
+        "message_date",
+        "text",
+        "text_hash",
+        "label",
+        "classified_at",
+        "used_at",
+        "batch_key",
+        "created_at",
+    )
+
+    def __init__(self, dataset_path: Path) -> None:
+        self._dataset_path = dataset_path
+        self._dataset_path.parent.mkdir(parents=True, exist_ok=True)
 
     def upsert_messages(self, messages: Iterable[ContextMessage]) -> int:
         rows = list(messages)
         if not rows:
             return 0
 
-        with self._connect() as conn:
-            before = conn.total_changes
-            conn.executemany(
-                """
-                INSERT INTO context_messages (
-                    message_key, message_id, peer_id, dialog_title, message_date,
-                    text, text_hash, created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(message_key) DO UPDATE SET
-                    dialog_title = excluded.dialog_title,
-                    message_date = excluded.message_date,
-                    text = excluded.text,
-                    text_hash = excluded.text_hash,
-                    label = NULL,
-                    classified_at = NULL
-                WHERE context_messages.used_at IS NULL
-                  AND context_messages.text_hash != excluded.text_hash
-                """,
-                [
-                    (
-                        msg.message_key,
-                        msg.message_id,
-                        msg.peer_id,
-                        msg.dialog_title,
-                        _to_iso(msg.date),
-                        msg.text,
-                        msg.text_hash,
-                        _now_iso(),
-                    )
-                    for msg in rows
-                ],
-            )
-            return conn.total_changes - before
+        frame = self._load_frame()
+        by_key = {str(row.message_key): index for index, row in frame.iterrows()}
+        changed = 0
+        next_row_id = _next_row_id(frame)
+        now = _now_iso()
+
+        for msg in rows:
+            row = {
+                "row_id": next_row_id,
+                "message_key": msg.message_key,
+                "message_id": msg.message_id,
+                "peer_id": msg.peer_id,
+                "dialog_title": msg.dialog_title,
+                "message_date": _to_iso(msg.date),
+                "text": msg.text,
+                "text_hash": msg.text_hash,
+                "label": pd.NA,
+                "classified_at": pd.NA,
+                "used_at": pd.NA,
+                "batch_key": pd.NA,
+                "created_at": now,
+            }
+            existing_index = by_key.get(msg.message_key)
+            if existing_index is None:
+                frame.loc[len(frame)] = row
+                by_key[msg.message_key] = len(frame) - 1
+                next_row_id += 1
+                changed += 1
+                continue
+
+            existing = frame.loc[existing_index]
+            if _is_missing(existing.get("used_at")) and existing.get("text_hash") != msg.text_hash:
+                for key in ("dialog_title", "message_date", "text", "text_hash"):
+                    frame.at[existing_index, key] = row[key]
+                frame.at[existing_index, "label"] = pd.NA
+                frame.at[existing_index, "classified_at"] = pd.NA
+                changed += 1
+
+        if changed:
+            self._save_frame(frame)
+        return changed
 
     def unclassified_messages(self, *, limit: int = 1000) -> list[QueuedContextMessage]:
-        with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT id, message_key, message_date, dialog_title, text, label
-                FROM context_messages
-                WHERE label IS NULL
-                ORDER BY message_date ASC, id ASC
-                LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
-        return [_queued_from_row(row) for row in rows]
+        frame = self._load_frame()
+        if frame.empty:
+            return []
+        subset = frame[frame["label"].isna()].sort_values(["message_date", "row_id"])
+        return [_queued_from_row(row) for _, row in subset.head(limit).iterrows()]
 
     def save_labels(self, labels: dict[int, ContextLabel]) -> None:
         if not labels:
             return
 
         now = _now_iso()
-        with self._connect() as conn:
-            conn.executemany(
-                """
-                UPDATE context_messages
-                SET label = ?, classified_at = ?
-                WHERE id = ?
-                """,
-                [(label, now, message_id) for message_id, label in labels.items()],
-            )
+        frame = self._load_frame()
+        for row_id, label in labels.items():
+            mask = frame["row_id"] == row_id
+            frame.loc[mask, "label"] = label
+            frame.loc[mask, "classified_at"] = now
+        self._save_frame(frame)
 
     def ready_batch(
         self,
@@ -164,8 +176,13 @@ class ContextProdStore:
         fallback_max_age_days: int,
         max_prompt_messages: int,
         max_maybe_messages: int,
+        force: bool = False,
+        force_max_age_days: int | None = None,
     ) -> ContextBatch | None:
         selected = self.pending_selected_messages()
+        if force and force_max_age_days is not None:
+            cutoff = datetime.now(UTC) - timedelta(days=force_max_age_days)
+            selected = [message for message in selected if message.date >= cutoff]
         prompt_messages = _select_prompt_messages(
             selected,
             max_prompt_messages=max_prompt_messages,
@@ -180,6 +197,23 @@ class ContextProdStore:
             return ContextBatch(
                 messages=prompt_messages,
                 reason=f"min_batch:{len(selected)}>={min_batch}",
+                pending_keep_count=pending_keep_count,
+                pending_maybe_count=pending_maybe_count,
+                included_keep_count=included_keep_count,
+                included_maybe_count=included_maybe_count,
+            )
+
+        if force and selected:
+            return ContextBatch(
+                messages=prompt_messages,
+                reason=(
+                    f"manual_force_recent:{len(selected)}"
+                    + (
+                        f"<= {force_max_age_days}d"
+                        if force_max_age_days is not None
+                        else ""
+                    )
+                ),
                 pending_keep_count=pending_keep_count,
                 pending_maybe_count=pending_maybe_count,
                 included_keep_count=included_keep_count,
@@ -203,16 +237,12 @@ class ContextProdStore:
         return None
 
     def pending_selected_messages(self) -> list[QueuedContextMessage]:
-        with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT id, message_key, message_date, dialog_title, text, label
-                FROM context_messages
-                WHERE label IN ('maybe', 'keep') AND used_at IS NULL
-                ORDER BY message_date ASC, id ASC
-                """
-            ).fetchall()
-        return [_queued_from_row(row) for row in rows]
+        frame = self._load_frame()
+        if frame.empty:
+            return []
+        mask = frame["label"].isin(["maybe", "keep"]) & frame["used_at"].isna()
+        subset = frame[mask].sort_values(["message_date", "row_id"])
+        return [_queued_from_row(row) for _, row in subset.iterrows()]
 
     def mark_used(self, message_ids: Iterable[int], *, bio: str) -> int:
         ids = list(message_ids)
@@ -223,68 +253,27 @@ class ContextProdStore:
             f"{_now_iso()}:{','.join(map(str, ids))}:{bio}".encode("utf-8")
         ).hexdigest()[:16]
         now = _now_iso()
-        with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO context_batches (batch_key, message_ids_json, bio, created_at)
-                VALUES (?, ?, ?, ?)
-                """,
-                (batch_key, json.dumps(ids), bio, now),
-            )
-            before = conn.total_changes
-            conn.executemany(
-                """
-                UPDATE context_messages
-                SET used_at = ?, batch_key = ?
-                WHERE id = ?
-                """,
-                [(now, batch_key, message_id) for message_id in ids],
-            )
-            return conn.total_changes - before
+        frame = self._load_frame()
+        mask = frame["row_id"].isin(ids)
+        changed = int(mask.sum())
+        frame.loc[mask, "used_at"] = now
+        frame.loc[mask, "batch_key"] = batch_key
+        self._save_frame(frame)
+        return changed
 
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self._db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
+    def _load_frame(self) -> pd.DataFrame:
+        if not self._dataset_path.exists():
+            return pd.DataFrame(columns=self._columns)
+        frame = pd.read_parquet(self._dataset_path)
+        for column in self._columns:
+            if column not in frame.columns:
+                frame[column] = pd.NA
+        return frame[list(self._columns)]
 
-    def _init_schema(self) -> None:
-        with self._connect() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS context_messages (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    message_key TEXT NOT NULL UNIQUE,
-                    message_id INTEGER NOT NULL,
-                    peer_id INTEGER,
-                    dialog_title TEXT NOT NULL,
-                    message_date TEXT NOT NULL,
-                    text TEXT NOT NULL,
-                    text_hash TEXT NOT NULL,
-                    label TEXT,
-                    classified_at TEXT,
-                    used_at TEXT,
-                    batch_key TEXT,
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            conn.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_context_messages_pending
-                ON context_messages(label, used_at, message_date)
-                """
-            )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS context_batches (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    batch_key TEXT NOT NULL UNIQUE,
-                    message_ids_json TEXT NOT NULL,
-                    bio TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
+    def _save_frame(self, frame: pd.DataFrame) -> None:
+        frame = frame.copy()
+        frame = frame.sort_values(["message_date", "row_id"], kind="stable")
+        frame.to_parquet(self._dataset_path, index=False)
 
 
 class Mix0035Classifier:
@@ -299,6 +288,7 @@ class Mix0035Classifier:
         feature_embedding_model_name: str,
         enable_nli_score: bool,
         nli_model_name: str,
+        max_message_length: int = 0,
     ) -> None:
         self._model_dir = model_dir
         self._stage1_model_name = stage1_model_name
@@ -306,6 +296,7 @@ class Mix0035Classifier:
         self._feature_embedding_model_name = feature_embedding_model_name
         self._enable_nli_score = enable_nli_score
         self._nli_model_name = nli_model_name
+        self._max_message_length = max_message_length
         self._stage1: CatBoostClassifier | None = None
         self._stage2 = None
         self._stage1_numeric_scaler = None
@@ -319,8 +310,30 @@ class Mix0035Classifier:
     def classify(self, messages: list[QueuedContextMessage]) -> dict[int, ContextLabel]:
         if not messages:
             return {}
+
+        result: dict[int, ContextLabel] = {}
+        eligible: list[QueuedContextMessage] = []
+        if self._max_message_length > 0:
+            for message in messages:
+                if len(message.text) > self._max_message_length:
+                    result[message.id] = "drop"
+                else:
+                    eligible.append(message)
+            if len(eligible) < len(messages):
+                logger.info(
+                    "Pre-dropped %d/%d messages exceeding max_message_length=%d",
+                    len(messages) - len(eligible),
+                    len(messages),
+                    self._max_message_length,
+                )
+            if not eligible:
+                return result
+        else:
+            eligible = messages
+
         self._load()
 
+        messages = eligible
         texts = [message.text for message in messages]
         stage1_embeddings = self._stage1_embedder.encode(
             texts, batch_size=64, show_progress_bar=False, normalize_embeddings=False
@@ -348,7 +361,6 @@ class Mix0035Classifier:
             _normalize_binary(pred) == 1 for pred in np.asarray(stage1_pred).ravel()
         ]
 
-        result: dict[int, ContextLabel] = {}
         stage2_indices = [
             index for index, is_not_drop in enumerate(stage1_is_not_drop) if is_not_drop
         ]
@@ -406,6 +418,9 @@ class Mix0035Classifier:
         self._stage1_embedder = SentenceTransformer(self._stage1_model_name)
         self._stage2_embedder = SentenceTransformer(self._stage2_model_name)
         self._feature_embedder = SentenceTransformer(self._feature_embedding_model_name)
+        for embedder in (self._stage1_embedder, self._stage2_embedder, self._feature_embedder):
+            current = getattr(embedder, "max_seq_length", None) or 512
+            embedder.max_seq_length = min(current, 256)
         logger.info(
             "Feature scores: embedding_model=%s, nli_enabled=%s",
             self._feature_embedding_model_name,
@@ -543,15 +558,25 @@ def _label_count(messages: list[QueuedContextMessage], label: ContextLabel) -> i
     return sum(1 for message in messages if message.label == label)
 
 
-def _queued_from_row(row: sqlite3.Row) -> QueuedContextMessage:
+def _queued_from_row(row) -> QueuedContextMessage:
     return QueuedContextMessage(
-        id=int(row["id"]),
+        id=int(row["row_id"]),
         message_key=str(row["message_key"]),
         date=_from_iso(str(row["message_date"])),
         dialog_title=str(row["dialog_title"]),
         text=str(row["text"]),
-        label=row["label"],
+        label=None if _is_missing(row["label"]) else row["label"],
     )
+
+
+def _next_row_id(frame: pd.DataFrame) -> int:
+    if frame.empty or frame["row_id"].isna().all():
+        return 1
+    return int(frame["row_id"].max()) + 1
+
+
+def _is_missing(value: object) -> bool:
+    return value is None or pd.isna(value)
 
 
 def _normalize_binary(value: object) -> int:
