@@ -71,7 +71,9 @@ class Settings:
     context_prod_fallback_min_batch: int = 10
     context_prod_fallback_max_age_days: int = 7
     context_prod_max_prompt_messages: int = 20
-    context_prod_db: str = "data/context_prod.sqlite3"
+    context_prod_max_maybe_prompt_messages: int = 5
+    context_prod_dataset: str = "data/context_prod.parquet"
+    context_prod_report_dir: str = "logs/context_api_reports"
     context_prod_model_dir: str = "data/prod_models/mix0035"
     context_prod_stage1_model: str = "cointegrated/rubert-tiny2"
     context_prod_stage2_model: str = (
@@ -84,6 +86,8 @@ class Settings:
     context_prod_nli_model: str = "cointegrated/rubert-base-cased-nli-threeway"
     context_prod_dialog_scan_limit: int = 500
     context_prod_per_dialog_limit: int = 100
+    context_prod_merge_gap_seconds: int = 1800
+    context_prod_max_message_length: int = 1000
 
     # Resolved paths (computed after init)
     project_root: Path = field(default=_PROJECT_ROOT)
@@ -102,8 +106,12 @@ class Settings:
         return str(self.project_root / self.session_name)
 
     @property
-    def context_prod_db_path(self) -> Path:
-        return self.project_root / self.context_prod_db
+    def context_prod_dataset_path(self) -> Path:
+        return self.project_root / self.context_prod_dataset
+
+    @property
+    def context_prod_report_path(self) -> Path:
+        return self.project_root / self.context_prod_report_dir
 
     @property
     def context_prod_model_path(self) -> Path:
@@ -144,8 +152,14 @@ def load_settings() -> Settings:
         context_prod_max_prompt_messages=int(
             _get_env("CONTEXT_PROD_MAX_PROMPT_MESSAGES", default="20")
         ),
-        context_prod_db=_get_env(
-            "CONTEXT_PROD_DB", default="data/context_prod.sqlite3"
+        context_prod_max_maybe_prompt_messages=int(
+            _get_env("CONTEXT_PROD_MAX_MAYBE_PROMPT_MESSAGES", default="5")
+        ),
+        context_prod_dataset=_get_env(
+            "CONTEXT_PROD_DATASET", default="data/context_prod.parquet"
+        ),
+        context_prod_report_dir=_get_env(
+            "CONTEXT_PROD_REPORT_DIR", default="logs/context_api_reports"
         ),
         context_prod_model_dir=_get_env(
             "CONTEXT_PROD_MODEL_DIR", default="data/prod_models/mix0035"
@@ -174,5 +188,11 @@ def load_settings() -> Settings:
         ),
         context_prod_per_dialog_limit=int(
             _get_env("CONTEXT_PROD_PER_DIALOG_LIMIT", default="100")
+        ),
+        context_prod_merge_gap_seconds=int(
+            _get_env("CONTEXT_PROD_MERGE_GAP_SECONDS", default="1800")
+        ),
+        context_prod_max_message_length=int(
+            _get_env("CONTEXT_PROD_MAX_MESSAGE_LENGTH", default="1000")
         ),
     )

@@ -10,6 +10,11 @@ import asyncio
 import logging
 import signal
 import sys
+from pathlib import Path
+
+_SRC_PATH = str(Path(__file__).resolve().parent / "src")
+if _SRC_PATH not in sys.path:
+    sys.path.insert(0, _SRC_PATH)
 
 from telebio.config import load_settings, Settings
 from telebio.providers.base import BioProvider
@@ -74,7 +79,8 @@ def _build_provider_by_mode(
             return ContextProdBioProvider(
                 telegram=telegram,
                 config=ContextProdProviderConfig(
-                    db_path=settings.context_prod_db_path,
+                    dataset_path=settings.context_prod_dataset_path,
+                    report_dir=settings.context_prod_report_path,
                     model_dir=settings.context_prod_model_path,
                     stage1_model=settings.context_prod_stage1_model,
                     stage2_model=settings.context_prod_stage2_model,
@@ -90,8 +96,13 @@ def _build_provider_by_mode(
                     fallback_min_batch=settings.context_prod_fallback_min_batch,
                     fallback_max_age_days=settings.context_prod_fallback_max_age_days,
                     max_prompt_messages=settings.context_prod_max_prompt_messages,
+                    max_maybe_prompt_messages=(
+                        settings.context_prod_max_maybe_prompt_messages
+                    ),
                     dialog_scan_limit=settings.context_prod_dialog_scan_limit,
                     per_dialog_limit=settings.context_prod_per_dialog_limit,
+                    merge_gap_seconds=settings.context_prod_merge_gap_seconds,
+                    max_message_length=settings.context_prod_max_message_length,
                 ),
             )
         case other:
