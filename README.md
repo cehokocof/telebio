@@ -1,352 +1,182 @@
-# 🤖 TeleBio
+# TeleBio
 
-> Автоматическая смена описания профиля (Bio) в Telegram — по таймеру, из списка фраз или через генерацию нейросетью YandexGPT.
-
-![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue?logo=python&logoColor=white)
-![Telethon](https://img.shields.io/badge/Telethon-MTProto-0088cc?logo=telegram)
-![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-76%20passed-brightgreen?logo=pytest)
+Автосмена Telegram-bio по расписанию. Берёт текст для bio у выбранного провайдера и
+обновляет поле «О себе» через MTProto (Telethon). Управление — опционально через
+Telegram-бота.
 
 ---
 
-## 📋 Оглавление
+## Главная фича: provider `context_prod`
 
-- [Возможности](#-возможности)
-- [Архитектура](#-архитектура)
-- [Структура проекта](#-структура-проекта)
-- [Быстрый старт](#-быстрый-старт)
-- [Конфигурация](#-конфигурация)
-- [Провайдеры био](#-провайдеры-био)
-- [Telegram-бот](#-telegram-бот-управление)
-- [Docker](#-docker)
-- [Тестирование](#-тестирование)
-- [Расширение](#-расширение)
-
----
-
-## ✨ Возможности
-
-| Фича | Описание |
-|---|---|
-| 🔄 **Автосмена био** | Меняет "О себе" в Telegram по заданному интервалу (по умолчанию — каждые 60 минут) |
-| 📝 **Список фраз** | Берёт фразы из JSON-файла, перебирает их последовательно с зацикливанием |
-| 🧠 **YandexGPT** | Генерирует абсурдные/смешные фразы через API YandexGPT с few-shot примерами |
-| 🔌 **Модульность** | Провайдеры реализуют `Protocol` — можно добавить свой за 5 минут |
-| 🤖 **Telegram-бот** | Управление через бота: `/status`, `/history`, `/set_mode`, `/new`, `/pause` |
-| 🛡️ **Обработка ошибок** | `FloodWaitError` — автоматический sleep + retry; остальные ошибки не крашат процесс |
-| ⚡ **Graceful shutdown** | Корректное завершение по `SIGINT`/`SIGTERM` |
-| 🐳 **Docker-ready** | Dockerfile + docker-compose для деплоя на сервер |
-| ✅ **76 тестов** | Полное покрытие: провайдеры, сервис Telegram, бот-команды, планировщик, конфиг, фабрика |
-
----
-
-## 🏗️ Архитектура
+Bio собирается не из готового списка и не «из головы» LLM, а из вашего собственного
+стиля общения за последние дни. Pipeline:
 
 ```
-┌──────────────┐     ┌─────────────────┐     ┌──────────────────┐
-│  Scheduler   │────▶│  BioProvider     │     │  TelegramService │
-│  (asyncio)   │     │  (Protocol)      │     │  (Telethon)      │
-│              │     ├─────────────────┤     │                  │
-│  interval ─┐ │     │ ListBioProvider  │     │  update_bio()    │
-│            │ │     │ LLMBioProvider   │     │  FloodWait retry │
-│  get_bio() │ │     └─────────────────┘     └──────────────────┘
-│       │    │ │              │                        ▲
-│       ▼    │ │              ▼                        │
-│  update_bio()│─────────────────────────────────────────┘
-│            │ │
-│  sleep ◀───┘ │
-└──────────────┘
-
-┌──────────────┐     ┌─────────────────┐
-│   Config     │────▶│   .env file     │
-│  (dataclass) │     │  API_ID, HASH…  │
-└──────────────┘     └─────────────────┘
+outgoing messages (Telethon)
+    │
+    ▼
+склейка соседних реплик одного диалога        (CONTEXT_PROD_MERGE_GAP_SECONDS)
+    │  закрытие группы — входящее от собеседника
+    │  или gap > N секунд
+    ▼
+pre-filter по длине → drop                    (CONTEXT_PROD_MAX_MESSAGE_LENGTH)
+    │  отсечение «портянок» до эмбеддингов
+    │  (защита от OOM и пустой работы модели)
+    ▼
+mix0035 classifier
+    ├─ stage1: rubert-tiny2 + numeric features  → drop / passthrough
+    ├─ stage2: distiluse-multilingual + CatBoost → drop / maybe / keep
+    └─ (опц.) NLI score                         (CONTEXT_PROD_ENABLE_NLI_SCORE)
+    │
+    ▼
+SQLite-очередь pending (maybe + keep)
+    │
+    ▼
+ready_batch?
+    ├─ accumulated ≥ CONTEXT_PROD_MIN_BATCH                       → fire
+    └─ accumulated ≥ FALLBACK_MIN_BATCH &&
+       oldest msg ≥ FALLBACK_MAX_AGE_DAYS                         → fire
+    │
+    ▼
+prompt = top-N keep + ≤ M maybe → YandexGPT → bio
+    │
+    ▼
+update_bio() → commit_used (messages помечены как использованные,
+              в следующий батч не попадут)
 ```
 
-**Принцип:** Scheduler в бесконечном цикле запрашивает у провайдера новую фразу и передаёт её в Telegram-сервис. Провайдер подменяется через одну переменную окружения.
+Двухстадийный классификатор на эмбеддингах вместо чистого ключевого матчинга
+позволяет отделять content-bearing реплики от мусора («ок», «понял», ссылок,
+команд бота). Батч не запускается, пока не накопится материал — это страхует от
+bio, сгенерированного из 2-3 случайных «ага».
+
+Веса mix0035 (`stage1_catboost.cbm`, `stage2_nearest_centroid.pkl`) лежат в
+`data/prod_models/mix0035/` и закоммичены — они небольшие (~150 KB).
+Stage-1/2 трансформеры подтягиваются с HuggingFace по именам из `.env` при
+первом запуске.
 
 ---
 
-## 📁 Структура проекта
+## Архитектура
 
 ```
-telebio/
-├── src/telebio/                 # Основной пакет
-│   ├── config.py                # Settings из .env (frozen dataclass)
-│   ├── scheduler.py             # Бесконечный цикл обновления
-│   ├── providers/
-│   │   ├── base.py              # BioProvider Protocol
-│   │   ├── list_provider.py     # Фразы из JSON
-│   │   └── llm_provider.py      # Генерация через YandexGPT
-│   └── services/
-│       ├── bot.py                # BotService: управление через Telegram-бота
-│       ├── telegram.py           # Telethon: подключение + update_bio
-│       └── handlers/             # Команды бота (каждая — отдельный модуль)
-│           ├── __init__.py       # register_all — регистрация всех хендлеров
-│           ├── status.py         # /status — текущий статус
-│           ├── history.py        # /history — история обновлений
-│           ├── set_mode.py       # /set_mode — смена провайдера
-│           ├── new.py            # /new — немедленное обновление био
-│           └── pause.py          # /pause — пауза/возобновление
-│
-├── tests/                       # 76 тестов (pytest + pytest-asyncio)
-│   ├── conftest.py              # Общие фикстуры
-│   ├── test_config.py           # Конфигурация и env-переменные
-│   ├── test_list_provider.py    # ListBioProvider
-│   ├── test_llm_provider.py     # LLMBioProvider + mocked HTTP
-│   ├── test_telegram_service.py # TelegramService + FloodWait
-│   ├── test_scheduler.py        # Планировщик
-│   ├── test_main.py             # Фабрика _build_provider
-│   └── test_protocol.py         # Проверка Protocol conformance
-│
-├── data/
-│   ├── phrases.json             # Фразы для ListBioProvider
-│   └── examples.json            # Few-shot примеры для YandexGPT
-│
-├── main.py                      # Точка входа
-├── pyproject.toml               # Зависимости и настройки pytest
-├── Dockerfile
-├── docker-compose.yml
-├── .env.example                 # Шаблон конфигурации
-└── .gitignore
+Scheduler (asyncio)
+    ├── collect_context() — periodic Telethon poll + классификация (только context_prod)
+    ├── BioProvider.get_bio() — list | llm | context_prod
+    └── TelegramService.update_bio() — Telethon + FloodWait retry
+
+BotService (опц.)
+    └── /status /history /set_mode /new /pause
 ```
+
+`BioProvider` — `typing.Protocol` (single async-метод `get_bio()`), реализации
+подменяются переменной окружения, наследования нет.
 
 ---
 
-## 🚀 Быстрый старт
+## Запуск
 
-### Предварительные требования
-
-- **Python 3.13+**
-- **[uv](https://docs.astral.sh/uv/)** (рекомендуемый менеджер пакетов) или pip
-- **Telegram API credentials** — получить на [my.telegram.org/apps](https://my.telegram.org/apps)
-
-### 1. Клонирование и установка
+Требования: Python 3.13+, [uv](https://docs.astral.sh/uv/), Telegram API creds
+с [my.telegram.org/apps](https://my.telegram.org/apps).
 
 ```bash
 git clone https://github.com/your-username/telebio.git
 cd telebio
 uv sync
-```
-
-### 2. Создание `.env`
-
-```bash
-cp .env.example .env
-```
-
-Заполните обязательные поля:
-
-```env
-TELEGRAM_API_ID=12345678
-TELEGRAM_API_HASH=abcdef1234567890abcdef1234567890
-```
-
-### 3. Первый запуск
-
-```bash
+cp .env.example .env      # заполнить TELEGRAM_API_ID / TELEGRAM_API_HASH
 uv run python main.py
 ```
 
-При первом запуске Telethon попросит ввести номер телефона и код подтверждения. После этого будет создан файл `telebio.session` — повторный логин не потребуется.
+Первый запуск — интерактивный логин Telethon (телефон + код), создаст
+`telebio.session`. Дальше — non-interactive.
 
 ---
 
-## ⚙️ Конфигурация
+## Провайдеры
 
-Все настройки задаются через переменные окружения (файл `.env`):
+| `BIO_PROVIDER` | Что делает |
+|---|---|
+| `list`         | Циклически перебирает фразы из `data/phrases.json`. Простой fallback. |
+| `llm`          | Прямой вызов YandexGPT с few-shot из `data/examples.json`. Без вашего контекста. |
+| `context_prod` | Pipeline сверху: outgoing → склейка → классификатор → батч → YandexGPT. |
 
-| Переменная | Обязательная | По умолчанию | Описание |
-|---|:---:|---|---|
-| `TELEGRAM_API_ID` | ✅ | — | API ID из my.telegram.org |
-| `TELEGRAM_API_HASH` | ✅ | — | API Hash из my.telegram.org |
-| `BIO_PROVIDER` | | `list` | Провайдер: `list` или `llm` |
-| `UPDATE_INTERVAL_MINUTES` | | `60` | Интервал смены био (минуты) |
-| `PHRASES_FILE` | | `data/phrases.json` | Путь к файлу фраз |
-| `EXAMPLES_FILE` | | `data/examples.json` | Путь к few-shot примерам для LLM |
-| `SESSION_NAME` | | `telebio` | Имя файла сессии Telethon |
-| `LOG_LEVEL` | | `INFO` | Уровень логирования |
-| `YANDEX_API_KEY` | ⚠️ | — | API-ключ Yandex Cloud (нужен при `llm`) |
-| `YANDEX_FOLDER_ID` | ⚠️ | — | Folder ID в Yandex Cloud (нужен при `llm`) |
-| `YANDEX_MODEL` | | `yandexgpt-lite/latest` | Модель YandexGPT |
-| `YANDEX_TEMPERATURE` | | `0.9` | Температура генерации (0.0–1.0) |
-| `BOT_TOKEN` | | — | Токен Telegram-бота от @BotFather (для управления) |
+Свой провайдер — файл в `src/telebio/providers/` с `async def get_bio(self) -> str` и
+ветка в фабрике `main.py`. Protocol structural-typing, никакого ABC.
 
 ---
 
-## 🎭 Провайдеры био
+## Конфигурация
 
-### 📝 `list` — Список фраз
+Все настройки — в `.env`. Каждая переменная в `.env.example` снабжена комментарием
+о назначении, дефолте и побочных эффектах — отдельную таблицу здесь не
+дублирую, чтобы не разъезжалась со временем. Смотреть `.env.example`.
 
-Берёт фразы из `data/phrases.json` и перебирает по кругу:
-
-```json
-[
-    "☕ Код, кофе, повтор",
-    "🐍 Python — мой второй язык",
-    "⚡ async def life(): await adventure()"
-]
-```
-
-- Фразы длиннее 70 символов автоматически обрезаются
-- Пустой файл или невалидный JSON — ошибка при старте
-
-### 🧠 `llm` — YandexGPT
-
-Генерирует абсурдные фразы через [YandexGPT Foundation Models API](https://yandex.cloud/ru/docs/foundation-models/):
-
-**Системный промпт:**
-> Ты — генератор случайных абсурдных фактов и сюрреалистичного юмора.
-> Придумай странную, смешную фразу для био.
-> Длина: до 60 символов. Тон: хаотичный, непредсказуемый, абсурдный.
-
-**Few-shot примеры** загружаются из `data/examples.json` и включаются в запрос как пары `user → assistant`:
-
-```json
-[
-    "Борщ — это UI-фреймворк для бабушек",
-    "Выгуливаю массив на поводке",
-    "Обучаю нейросеть варить пельмени"
-]
-```
-
-Чем точнее примеры отражают желаемый стиль — тем лучше результат.
-
-**Для включения:**
-```env
-BIO_PROVIDER=llm
-YANDEX_API_KEY=ваш_ключ
-YANDEX_FOLDER_ID=ваш_folder_id
-```
+Минимум для запуска: `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`.
+Для `BIO_PROVIDER=llm` или `context_prod`: `YANDEX_API_KEY` + `YANDEX_FOLDER_ID`.
 
 ---
 
-## 🐳 Docker
+## Управляющий бот
 
-### Сборка и запуск
+Если задан `BOT_TOKEN`, поднимается локальный бот; команды доступны только владельцу
+аккаунта.
+
+| Команда | Назначение |
+|---|---|
+| `/status`            | Текущий провайдер, состояние, последнее bio. |
+| `/history`           | Последние 10 обновлений с таймстампами. |
+| `/set_mode list\|llm\|context_prod` | Переключение провайдера на лету. |
+| `/new`               | Сгенерировать и применить bio немедленно (для `context_prod` — с `force=True`). |
+| `/pause`             | Пауза / возобновление автообновления; текущее bio остаётся. |
+
+Хендлеры — отдельные модули в `services/handlers/`, регистрация через
+`register_all` в `handlers/__init__.py`.
+
+---
+
+## Обработка ошибок
+
+| Ситуация | Поведение |
+|---|---|
+| `FloodWaitError` | `sleep(N)` + одна повторная попытка. |
+| `RPCError`       | Логирование, re-raise. |
+| Ошибка провайдера / сервиса | Логирование, переход к следующему тику, процесс жив. |
+| `ContextBatchNotReady` | Лог-info, `update_bio` пропускается, ждём следующего тика. |
+| Bio > 70 символов | Авто-обрезка + warning. |
+| `BIO_PROVIDER=llm`/`context_prod` без Yandex-ключей | Фатально при старте, понятное сообщение. |
+
+---
+
+## Docker
 
 ```bash
 docker compose up --build
+docker attach telebio       # для первого интерактивного логина Telethon
 ```
 
-### Первая авторизация
+После создания `telebio.session` можно убрать `stdin_open`/`tty` из compose.
 
-При первом запуске нужно пройти интерактивную авторизацию Telethon (ввести номер телефона и код). Для этого в `docker-compose.yml` включены `stdin_open: true` и `tty: true`.
+Volumes: `./telebio.session`, `./data` (ro). Restart policy: `unless-stopped`.
 
-Подключитесь к контейнеру:
-
-```bash
-docker attach telebio
-```
-
-После успешного логина и создания `telebio.session` можно убрать `stdin_open` и `tty` из compose-файла.
-
-### Что монтируется
-
-| Volume | Зачем |
-|---|---|
-| `./telebio.session:/app/telebio.session` | Сохранение сессии между перезапусками |
-| `./data:/app/data:ro` | Редактирование фраз/примеров без пересборки образа |
-
-### Политика перезапуска
-
-`restart: unless-stopped` — контейнер автоматически перезапускается при падении и после ребута сервера.
+Для `context_prod` веса mix0035 уже в репозитории
+(`data/prod_models/mix0035/`). Перетренировать — `labeling/train_catboost.py`
+(см. также вспомогательные скрипты в `labeling/` и `scripts/`).
 
 ---
 
-## 🧪 Тестирование
-
-### Запуск тестов
+## Тесты
 
 ```bash
 uv sync --group dev
 uv run pytest -v
 ```
 
-### Покрытие
-
-| Модуль | Тестов | Что проверяется |
-|---|:---:|---|
-| `test_config.py` | 11 | `_get_env`, `Settings` (пути, frozen, defaults), `load_settings` |
-| `test_list_provider.py` | 10 | Загрузка JSON, ошибки валидации, truncation, sequential cycling |
-| `test_llm_provider.py` | 11 | Init, `_build_request_body`, `_extract_text`, `get_bio` через mocked HTTP |
-| `test_telegram_service.py` | 6 | Lifecycle, `update_bio`, `FloodWaitError` retry, `RPCError` re-raise |
-| `test_scheduler.py` | 3 | Цикл обновления, устойчивость к ошибкам provider/telegram |
-| `test_bot_handlers.py` | 24 | Все команды бота: /status, /history, /set_mode, /new, /pause, пауза планировщика |
-| `test_main.py` | 5 | Фабрика: list, llm, missing credentials, unknown provider |
-| `test_protocol.py` | 2 | Оба провайдера реализуют `BioProvider` Protocol |
-| **Итого** | **76** | |
-
-### Стек тестирования
-
-- **pytest** + **pytest-asyncio** — запуск async-тестов
-- **respx** — мок HTTP-запросов к YandexGPT (поверх httpx)
-- **unittest.mock** — мок Telethon клиента
+Стек: `pytest`, `pytest-asyncio`, `respx` (мок HTTP к YandexGPT),
+`unittest.mock` (Telethon). Покрытие: конфиг, list/llm-провайдеры,
+TelegramService с FloodWait, scheduler, бот-команды, фабрика, Protocol-conformance.
 
 ---
 
-## 🔌 Расширение
+## Лицензия
 
-### Добавление своего провайдера
-
-1. Создайте файл в `src/telebio/providers/`:
-
-```python
-# src/telebio/providers/my_provider.py
-
-class MyBioProvider:
-    """Достаточно реализовать один async-метод."""
-
-    async def get_bio(self) -> str:
-        return "Моя новая фраза"
-```
-
-2. Зарегистрируйте его в фабрике (`main.py`):
-
-```python
-case "my_provider":
-    return MyBioProvider()
-```
-
-3. Укажите в `.env`:
-
-```env
-BIO_PROVIDER=my_provider
-```
-
-Никаких абстрактных классов наследовать не нужно — используется `typing.Protocol` (structural subtyping / duck typing).
-
----
-
-## 🤖 Telegram-бот (управление)
-
-Если задана переменная `BOT_TOKEN`, запускается управляющий бот. Все команды доступны только владельцу аккаунта.
-
-| Команда | Описание |
-|---|---|
-| `/status` | Текущий режим, состояние (активно / на паузе), последнее био |
-| `/history` | Последние 10 обновлений био с таймстампами |
-| `/set_mode list\|llm` | Переключение провайдера на лету |
-| `/new` | Немедленно сгенерировать и применить новое био |
-| `/pause` | Приостановить / возобновить автообновление (текущее био сохраняется) |
-
-Хендлеры вынесены в отдельные модули (`services/handlers/`), что упрощает добавление новых команд — достаточно создать файл с функцией-обработчиком и зарегистрировать её в `handlers/__init__.py`.
-
----
-
-## 🛡️ Обработка ошибок
-
-| Ситуация | Поведение |
-|---|---|
-| `FloodWaitError` от Telegram | Автоматический `sleep(N секунд)` + одна повторная попытка |
-| Любая `RPCError` | Логирование + re-raise |
-| Ошибка в провайдере или сервисе | Логирование, переход к следующему циклу (процесс не падает) |
-| Отсутствует `TELEGRAM_API_ID` | Ошибка при старте с понятным сообщением |
-| `BIO_PROVIDER=llm` без ключей | Ошибка при старте: «requires YANDEX_API_KEY and YANDEX_FOLDER_ID» |
-| Фраза > 70 символов | Автоматическая обрезка + warning в лог |
-
----
-
-## 📜 Лицензия
-
-MIT — делайте что хотите.
+MIT.
