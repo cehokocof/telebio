@@ -1,6 +1,6 @@
 """Dry-run: apply _merge_consecutive_outgoing to existing parquet rows.
 
-Reads data/context_prod.parquet, reconstructs ContextMessage-like items per
+Reads data/telegram_context.parquet, reconstructs ContextMessage-like items per
 (peer_id) bucket, runs the merge function with a configurable gap, then
 reports:
   - row counts before / after merge
@@ -19,7 +19,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from telebio.context_prod import ContextMessage, _from_iso  # noqa: E402
+from telebio.telegram_context import ContextMessage, _from_iso  # noqa: E402
 from telebio.services.telegram import _merge_consecutive_outgoing  # noqa: E402
 
 
@@ -40,7 +40,7 @@ def main() -> None:
     parser.add_argument(
         "--dataset",
         type=Path,
-        default=ROOT / "data" / "context_prod.parquet",
+        default=ROOT / "data" / "telegram_context.parquet",
     )
     parser.add_argument("--samples", type=int, default=10, help="how many merged groups to show (0 = all)")
     parser.add_argument(

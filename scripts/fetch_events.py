@@ -113,14 +113,14 @@ async def _fetch(args, settings) -> list[dict]:
 async def main() -> None:
     settings = load_settings()
     parser = argparse.ArgumentParser()
-    parser.add_argument("--days", type=int, default=settings.context_prod_fetch_days)
+    parser.add_argument("--days", type=int, default=settings.telegram_context_fetch_days)
     parser.add_argument(
         "--dialog-scan-limit", type=int,
-        default=settings.context_prod_dialog_scan_limit,
+        default=settings.telegram_context_dialog_scan_limit,
     )
     parser.add_argument(
         "--per-dialog-limit", type=int,
-        default=settings.context_prod_per_dialog_limit,
+        default=settings.telegram_context_per_dialog_limit,
     )
     parser.add_argument(
         "--output", type=Path,

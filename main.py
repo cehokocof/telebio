@@ -17,6 +17,7 @@ if _SRC_PATH not in sys.path:
     sys.path.insert(0, _SRC_PATH)
 
 from telebio.config import load_settings, Settings
+from telebio.prompts import Prompt, get_prompt, load_prompts
 from telebio.providers.base import BioProvider
 from telebio.providers.list_provider import ListBioProvider
 from telebio.providers.llm_provider import LLMBioProvider
@@ -34,80 +35,91 @@ logger = logging.getLogger("telebio")
 def _build_provider(
     settings: Settings,
     telegram: TelegramService | None = None,
+    prompts: list[Prompt] | None = None,
+    prompt_name: str | None = None,
 ) -> BioProvider:
     """Instantiate the correct bio provider based on config."""
-    return _build_provider_by_mode(settings.bio_provider, settings, telegram)
+    return _build_provider_by_mode(
+        settings.bio_provider, settings, telegram, prompts, prompt_name
+    )
 
 
 def _build_provider_by_mode(
     mode: str,
     settings: Settings,
     telegram: TelegramService | None = None,
+    prompts: list[Prompt] | None = None,
+    prompt_name: str | None = None,
 ) -> BioProvider:
     """Build a provider for a specific mode."""
     match mode:
         case "list":
             return ListBioProvider(settings.phrases_path)
-        case "llm":
+        case "llm_prompt_generation":
             if not settings.yandex_api_key or not settings.yandex_folder_id:
                 raise EnvironmentError(
-                    "BIO_PROVIDER=llm requires YANDEX_API_KEY and "
-                    "YANDEX_FOLDER_ID to be set in .env"
+                    "BIO_PROVIDER=llm_prompt_generation requires YANDEX_API_KEY "
+                    "and YANDEX_FOLDER_ID to be set in .env"
                 )
+            system_prompt = (
+                get_prompt(prompts, prompt_name).system if prompts else None
+            )
             return LLMBioProvider(
                 api_key=settings.yandex_api_key,
                 folder_id=settings.yandex_folder_id,
                 examples_path=settings.examples_path,
                 model=settings.yandex_model,
                 temperature=settings.yandex_temperature,
+                system_prompt=system_prompt,
             )
-        case "context_prod":
-            from telebio.providers.context_prod_provider import (
-                ContextProdBioProvider,
-                ContextProdProviderConfig,
+        case "telegram_context":
+            from telebio.providers.telegram_context_provider import (
+                TelegramContextBioProvider,
+                TelegramContextProviderConfig,
             )
 
             if telegram is None:
                 raise EnvironmentError(
-                    "BIO_PROVIDER=context_prod requires an active TelegramService."
+                    "BIO_PROVIDER=telegram_context requires an active TelegramService."
                 )
             if not settings.yandex_api_key or not settings.yandex_folder_id:
                 raise EnvironmentError(
-                    "BIO_PROVIDER=context_prod requires YANDEX_API_KEY and "
+                    "BIO_PROVIDER=telegram_context requires YANDEX_API_KEY and "
                     "YANDEX_FOLDER_ID to be set in .env"
                 )
-            return ContextProdBioProvider(
+            return TelegramContextBioProvider(
                 telegram=telegram,
-                config=ContextProdProviderConfig(
-                    dataset_path=settings.context_prod_dataset_path,
-                    report_dir=settings.context_prod_report_path,
-                    model_dir=settings.context_prod_model_path,
-                    stage1_model=settings.context_prod_stage1_model,
-                    stage2_model=settings.context_prod_stage2_model,
-                    feature_embedding_model=settings.context_prod_feature_embedding_model,
-                    enable_nli_score=settings.context_prod_enable_nli_score,
-                    nli_model=settings.context_prod_nli_model,
+                config=TelegramContextProviderConfig(
+                    dataset_path=settings.telegram_context_dataset_path,
+                    report_dir=settings.telegram_context_report_path,
+                    model_dir=settings.telegram_context_model_path,
+                    stage1_model=settings.telegram_context_stage1_model,
+                    stage2_model=settings.telegram_context_stage2_model,
+                    feature_embedding_model=settings.telegram_context_feature_embedding_model,
+                    enable_nli_score=settings.telegram_context_enable_nli_score,
+                    nli_model=settings.telegram_context_nli_model,
                     yandex_api_key=settings.yandex_api_key,
                     yandex_folder_id=settings.yandex_folder_id,
                     yandex_model=settings.yandex_model,
                     yandex_temperature=settings.yandex_temperature,
-                    fetch_days=settings.context_prod_fetch_days,
-                    min_batch=settings.context_prod_min_batch,
-                    fallback_min_batch=settings.context_prod_fallback_min_batch,
-                    fallback_max_age_days=settings.context_prod_fallback_max_age_days,
-                    max_prompt_messages=settings.context_prod_max_prompt_messages,
+                    fetch_days=settings.telegram_context_fetch_days,
+                    min_batch=settings.telegram_context_min_batch,
+                    fallback_min_batch=settings.telegram_context_fallback_min_batch,
+                    fallback_max_age_days=settings.telegram_context_fallback_max_age_days,
+                    max_prompt_messages=settings.telegram_context_max_prompt_messages,
                     max_maybe_prompt_messages=(
-                        settings.context_prod_max_maybe_prompt_messages
+                        settings.telegram_context_max_maybe_prompt_messages
                     ),
-                    dialog_scan_limit=settings.context_prod_dialog_scan_limit,
-                    per_dialog_limit=settings.context_prod_per_dialog_limit,
-                    merge_gap_seconds=settings.context_prod_merge_gap_seconds,
-                    max_message_length=settings.context_prod_max_message_length,
+                    dialog_scan_limit=settings.telegram_context_dialog_scan_limit,
+                    per_dialog_limit=settings.telegram_context_per_dialog_limit,
+                    merge_gap_seconds=settings.telegram_context_merge_gap_seconds,
+                    max_message_length=settings.telegram_context_max_message_length,
                 ),
             )
         case other:
             raise ValueError(
-                f"Unknown BIO_PROVIDER: '{other}'. Use 'list', 'llm', or 'context_prod'."
+                f"Unknown BIO_PROVIDER: '{other}'. Use 'list', "
+                "'llm_prompt_generation', or 'telegram_context'."
             )
 
 
@@ -132,27 +144,32 @@ async def _async_main() -> None:
     settings = load_settings()
     _configure_logging(settings.log_level)
     scheduler_interval = (
-        settings.context_prod_poll_minutes
-        if settings.bio_provider == "context_prod"
+        settings.telegram_context_poll_minutes
+        if settings.bio_provider == "telegram_context"
         else settings.update_interval_minutes
     )
 
     logger.info("Starting TeleBio (interval=%d min, provider=%s)",
                 scheduler_interval, settings.bio_provider)
 
+    prompts = load_prompts(settings.prompts_path)
+
     async with TelegramService(
         api_id=settings.api_id,
         api_hash=settings.api_hash,
         session_path=settings.session_path,
     ) as tg:
-        provider = _build_provider(settings, tg)
+        # Shared mutable runtime state (mode + active prompt) — read by both the
+        # scheduler and the management bot.
+        state = {"mode": settings.bio_provider, "prompt_name": prompts[0].name}
 
-        # Track current mode for dynamic switching
-        current_mode = {"mode": settings.bio_provider}
-
-        # Provider factory for rebuilding on mode change
+        # Provider factory for (re)building on mode / prompt change
         def provider_factory(mode: str) -> BioProvider:
-            return _build_provider_by_mode(mode, settings, tg)
+            return _build_provider_by_mode(
+                mode, settings, tg, prompts, state.get("prompt_name")
+            )
+
+        provider = provider_factory(settings.bio_provider)
 
         # Start management bot if token is provided
         bot = None
@@ -162,9 +179,10 @@ async def _async_main() -> None:
                 bot_token=settings.bot_token,
                 api_id=settings.api_id,
                 api_hash=settings.api_hash,
-                current_mode=current_mode,
+                current_mode=state,
                 telegram=tg,
                 provider_factory=provider_factory,
+                prompts=prompts,
             )
             await bot.start(owner_id=me.id)
             logger.info("Management bot enabled")
@@ -186,7 +204,7 @@ async def _async_main() -> None:
                 provider,
                 scheduler_interval,
                 provider_factory=provider_factory,
-                current_mode=current_mode,
+                current_mode=state,
                 bot=bot,
             )
         )

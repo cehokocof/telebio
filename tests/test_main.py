@@ -40,19 +40,19 @@ class TestBuildProvider:
 
     def test_llm_provider(self, base_settings: Settings) -> None:
         from dataclasses import replace
-        s = replace(base_settings, bio_provider="llm")
+        s = replace(base_settings, bio_provider="llm_prompt_generation")
         provider = _build_provider(s)
         assert isinstance(provider, LLMBioProvider)
 
     def test_llm_without_api_key_raises(self, base_settings: Settings) -> None:
         from dataclasses import replace
-        s = replace(base_settings, bio_provider="llm", yandex_api_key="")
+        s = replace(base_settings, bio_provider="llm_prompt_generation", yandex_api_key="")
         with pytest.raises(EnvironmentError, match="YANDEX_API_KEY"):
             _build_provider(s)
 
     def test_llm_without_folder_id_raises(self, base_settings: Settings) -> None:
         from dataclasses import replace
-        s = replace(base_settings, bio_provider="llm", yandex_folder_id="")
+        s = replace(base_settings, bio_provider="llm_prompt_generation", yandex_folder_id="")
         with pytest.raises(EnvironmentError, match="YANDEX_FOLDER_ID"):
             _build_provider(s)
 

@@ -47,7 +47,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from telebio.config import load_settings  # noqa: E402
-from telebio.context_prod import (  # noqa: E402
+from telebio.telegram_context import (  # noqa: E402
     ContextMessage,
     Mix0035Classifier,
     QueuedContextMessage,
@@ -252,16 +252,16 @@ def _classify(
         return
     settings = load_settings()
     classifier = Mix0035Classifier(
-        settings.context_prod_model_path,
-        stage1_model_name=settings.context_prod_stage1_model,
-        stage2_model_name=settings.context_prod_stage2_model,
-        feature_embedding_model_name=settings.context_prod_feature_embedding_model,
+        settings.telegram_context_model_path,
+        stage1_model_name=settings.telegram_context_stage1_model,
+        stage2_model_name=settings.telegram_context_stage2_model,
+        feature_embedding_model_name=settings.telegram_context_feature_embedding_model,
         enable_nli_score=enable_nli,
-        nli_model_name=settings.context_prod_nli_model,
+        nli_model_name=settings.telegram_context_nli_model,
     )
     print(
         "Loading Mix0035 model artifacts from "
-        f"{settings.context_prod_model_path}… this is the slow part."
+        f"{settings.telegram_context_model_path}… this is the slow part."
     )
     # Force load + clamp max_seq_length on all embedders.
     # rubert-tiny2 advertises max_position_embeddings=2048, which makes
@@ -343,7 +343,7 @@ def main() -> None:
             "explicitly when you are ready to overwrite."
         ),
     )
-    parser.add_argument("--gap", type=int, default=settings.context_prod_merge_gap_seconds)
+    parser.add_argument("--gap", type=int, default=settings.telegram_context_merge_gap_seconds)
     parser.add_argument("--dialog", type=str, default="", help="substring filter (case-insensitive)")
     parser.add_argument(
         "--include-forwards",

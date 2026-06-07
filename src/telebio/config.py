@@ -46,16 +46,19 @@ class Settings:
     # Interval between bio changes in minutes
     update_interval_minutes: int = 60
 
-    # Provider type: "list" | "llm" | "context_prod"
+    # Provider type: "list" | "llm_prompt_generation" | "telegram_context"
     bio_provider: str = "list"
 
     # Path to the phrases data file (relative to project root)
     phrases_file: str = "data/phrases.json"
 
-    # Path to few-shot examples for LLM provider (relative to project root)
+    # Path to few-shot examples for the llm_prompt_generation provider
     examples_file: str = "data/examples.json"
 
-    # ── YandexGPT settings (required only for llm/context_prod providers) ──
+    # Path to named system prompts for llm_prompt_generation
+    prompts_file: str = "data/prompts.json"
+
+    # ── YandexGPT settings (required for llm_prompt_generation/telegram_context) ──
     yandex_api_key: str = ""
     yandex_folder_id: str = ""
     yandex_model: str = "yandexgpt-lite/latest"
@@ -65,29 +68,29 @@ class Settings:
     log_level: str = "INFO"
 
     # Production context collection/classification settings
-    context_prod_poll_minutes: int = 60
-    context_prod_fetch_days: int = 7
-    context_prod_min_batch: int = 20
-    context_prod_fallback_min_batch: int = 10
-    context_prod_fallback_max_age_days: int = 7
-    context_prod_max_prompt_messages: int = 20
-    context_prod_max_maybe_prompt_messages: int = 5
-    context_prod_dataset: str = "data/context_prod.parquet"
-    context_prod_report_dir: str = "logs/context_api_reports"
-    context_prod_model_dir: str = "data/prod_models/mix0035"
-    context_prod_stage1_model: str = "cointegrated/rubert-tiny2"
-    context_prod_stage2_model: str = (
+    telegram_context_poll_minutes: int = 60
+    telegram_context_fetch_days: int = 7
+    telegram_context_min_batch: int = 20
+    telegram_context_fallback_min_batch: int = 10
+    telegram_context_fallback_max_age_days: int = 7
+    telegram_context_max_prompt_messages: int = 20
+    telegram_context_max_maybe_prompt_messages: int = 5
+    telegram_context_dataset: str = "data/telegram_context.parquet"
+    telegram_context_report_dir: str = "logs/context_api_reports"
+    telegram_context_model_dir: str = "data/prod_models/mix0035"
+    telegram_context_stage1_model: str = "cointegrated/rubert-tiny2"
+    telegram_context_stage2_model: str = (
         "sentence-transformers/distiluse-base-multilingual-cased-v2"
     )
-    context_prod_feature_embedding_model: str = (
+    telegram_context_feature_embedding_model: str = (
         "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     )
-    context_prod_enable_nli_score: bool = False
-    context_prod_nli_model: str = "cointegrated/rubert-base-cased-nli-threeway"
-    context_prod_dialog_scan_limit: int = 500
-    context_prod_per_dialog_limit: int = 100
-    context_prod_merge_gap_seconds: int = 1800
-    context_prod_max_message_length: int = 1000
+    telegram_context_enable_nli_score: bool = False
+    telegram_context_nli_model: str = "cointegrated/rubert-base-cased-nli-threeway"
+    telegram_context_dialog_scan_limit: int = 500
+    telegram_context_per_dialog_limit: int = 100
+    telegram_context_merge_gap_seconds: int = 1800
+    telegram_context_max_message_length: int = 1000
 
     # Resolved paths (computed after init)
     project_root: Path = field(default=_PROJECT_ROOT)
@@ -101,21 +104,25 @@ class Settings:
         return self.project_root / self.examples_file
 
     @property
+    def prompts_path(self) -> Path:
+        return self.project_root / self.prompts_file
+
+    @property
     def session_path(self) -> str:
         """Full path to the Telethon .session file (without extension)."""
         return str(self.project_root / self.session_name)
 
     @property
-    def context_prod_dataset_path(self) -> Path:
-        return self.project_root / self.context_prod_dataset
+    def telegram_context_dataset_path(self) -> Path:
+        return self.project_root / self.telegram_context_dataset
 
     @property
-    def context_prod_report_path(self) -> Path:
-        return self.project_root / self.context_prod_report_dir
+    def telegram_context_report_path(self) -> Path:
+        return self.project_root / self.telegram_context_report_dir
 
     @property
-    def context_prod_model_path(self) -> Path:
-        return self.project_root / self.context_prod_model_dir
+    def telegram_context_model_path(self) -> Path:
+        return self.project_root / self.telegram_context_model_dir
 
 
 def load_settings() -> Settings:
@@ -131,6 +138,7 @@ def load_settings() -> Settings:
         bio_provider=_get_env("BIO_PROVIDER", default="list"),
         phrases_file=_get_env("PHRASES_FILE", default="data/phrases.json"),
         examples_file=_get_env("EXAMPLES_FILE", default="data/examples.json"),
+        prompts_file=_get_env("PROMPTS_FILE", default="data/prompts.json"),
         yandex_api_key=_get_env("YANDEX_API_KEY", default=""),
         yandex_folder_id=_get_env("YANDEX_FOLDER_ID", default=""),
         yandex_model=_get_env("YANDEX_MODEL", default="yandexgpt-lite/latest"),
@@ -138,61 +146,61 @@ def load_settings() -> Settings:
             _get_env("YANDEX_TEMPERATURE", default="0.9")
         ),
         log_level=_get_env("LOG_LEVEL", default="INFO"),
-        context_prod_poll_minutes=int(
-            _get_env("CONTEXT_PROD_POLL_MINUTES", default="60")
+        telegram_context_poll_minutes=int(
+            _get_env("TELEGRAM_CONTEXT_POLL_MINUTES", default="60")
         ),
-        context_prod_fetch_days=int(_get_env("CONTEXT_PROD_FETCH_DAYS", default="7")),
-        context_prod_min_batch=int(_get_env("CONTEXT_PROD_MIN_BATCH", default="20")),
-        context_prod_fallback_min_batch=int(
-            _get_env("CONTEXT_PROD_FALLBACK_MIN_BATCH", default="10")
+        telegram_context_fetch_days=int(_get_env("TELEGRAM_CONTEXT_FETCH_DAYS", default="7")),
+        telegram_context_min_batch=int(_get_env("TELEGRAM_CONTEXT_MIN_BATCH", default="20")),
+        telegram_context_fallback_min_batch=int(
+            _get_env("TELEGRAM_CONTEXT_FALLBACK_MIN_BATCH", default="10")
         ),
-        context_prod_fallback_max_age_days=int(
-            _get_env("CONTEXT_PROD_FALLBACK_MAX_AGE_DAYS", default="7")
+        telegram_context_fallback_max_age_days=int(
+            _get_env("TELEGRAM_CONTEXT_FALLBACK_MAX_AGE_DAYS", default="7")
         ),
-        context_prod_max_prompt_messages=int(
-            _get_env("CONTEXT_PROD_MAX_PROMPT_MESSAGES", default="20")
+        telegram_context_max_prompt_messages=int(
+            _get_env("TELEGRAM_CONTEXT_MAX_PROMPT_MESSAGES", default="20")
         ),
-        context_prod_max_maybe_prompt_messages=int(
-            _get_env("CONTEXT_PROD_MAX_MAYBE_PROMPT_MESSAGES", default="5")
+        telegram_context_max_maybe_prompt_messages=int(
+            _get_env("TELEGRAM_CONTEXT_MAX_MAYBE_PROMPT_MESSAGES", default="5")
         ),
-        context_prod_dataset=_get_env(
-            "CONTEXT_PROD_DATASET", default="data/context_prod.parquet"
+        telegram_context_dataset=_get_env(
+            "TELEGRAM_CONTEXT_DATASET", default="data/telegram_context.parquet"
         ),
-        context_prod_report_dir=_get_env(
-            "CONTEXT_PROD_REPORT_DIR", default="logs/context_api_reports"
+        telegram_context_report_dir=_get_env(
+            "TELEGRAM_CONTEXT_REPORT_DIR", default="logs/context_api_reports"
         ),
-        context_prod_model_dir=_get_env(
-            "CONTEXT_PROD_MODEL_DIR", default="data/prod_models/mix0035"
+        telegram_context_model_dir=_get_env(
+            "TELEGRAM_CONTEXT_MODEL_DIR", default="data/prod_models/mix0035"
         ),
-        context_prod_stage1_model=_get_env(
-            "CONTEXT_PROD_STAGE1_MODEL", default="cointegrated/rubert-tiny2"
+        telegram_context_stage1_model=_get_env(
+            "TELEGRAM_CONTEXT_STAGE1_MODEL", default="cointegrated/rubert-tiny2"
         ),
-        context_prod_stage2_model=_get_env(
-            "CONTEXT_PROD_STAGE2_MODEL",
+        telegram_context_stage2_model=_get_env(
+            "TELEGRAM_CONTEXT_STAGE2_MODEL",
             default="sentence-transformers/distiluse-base-multilingual-cased-v2",
         ),
-        context_prod_feature_embedding_model=_get_env(
-            "CONTEXT_PROD_FEATURE_EMBEDDING_MODEL",
+        telegram_context_feature_embedding_model=_get_env(
+            "TELEGRAM_CONTEXT_FEATURE_EMBEDDING_MODEL",
             default="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
         ),
-        context_prod_enable_nli_score=_get_env(
-            "CONTEXT_PROD_ENABLE_NLI_SCORE", default="false"
+        telegram_context_enable_nli_score=_get_env(
+            "TELEGRAM_CONTEXT_ENABLE_NLI_SCORE", default="false"
         ).lower()
         in {"1", "true", "yes", "on"},
-        context_prod_nli_model=_get_env(
-            "CONTEXT_PROD_NLI_MODEL",
+        telegram_context_nli_model=_get_env(
+            "TELEGRAM_CONTEXT_NLI_MODEL",
             default="cointegrated/rubert-base-cased-nli-threeway",
         ),
-        context_prod_dialog_scan_limit=int(
-            _get_env("CONTEXT_PROD_DIALOG_SCAN_LIMIT", default="500")
+        telegram_context_dialog_scan_limit=int(
+            _get_env("TELEGRAM_CONTEXT_DIALOG_SCAN_LIMIT", default="500")
         ),
-        context_prod_per_dialog_limit=int(
-            _get_env("CONTEXT_PROD_PER_DIALOG_LIMIT", default="100")
+        telegram_context_per_dialog_limit=int(
+            _get_env("TELEGRAM_CONTEXT_PER_DIALOG_LIMIT", default="100")
         ),
-        context_prod_merge_gap_seconds=int(
-            _get_env("CONTEXT_PROD_MERGE_GAP_SECONDS", default="1800")
+        telegram_context_merge_gap_seconds=int(
+            _get_env("TELEGRAM_CONTEXT_MERGE_GAP_SECONDS", default="1800")
         ),
-        context_prod_max_message_length=int(
-            _get_env("CONTEXT_PROD_MAX_MESSAGE_LENGTH", default="1000")
+        telegram_context_max_message_length=int(
+            _get_env("TELEGRAM_CONTEXT_MAX_MESSAGE_LENGTH", default="1000")
         ),
     )

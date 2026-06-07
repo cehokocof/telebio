@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from telethon import events
 
-from telebio.context_exceptions import ContextBatchNotReady
+from telebio.services.actions import run_new
 
 if TYPE_CHECKING:
     from telebio.services.bot import BotService
@@ -17,34 +17,4 @@ logger = logging.getLogger(__name__)
 
 async def handle_new(event: events.NewMessage.Event, bot: BotService) -> None:
     """Immediately generate and apply a new bio."""
-    if not bot.telegram or not bot.provider_factory:
-        await event.respond("❌ Bot не настроен для обновления био.")
-        return
-
-    mode = bot.current_mode.get("mode", "list")
-    try:
-        provider = bot.provider_factory(mode)
-        if mode == "context_prod":
-            logger.info("/new in context_prod mode is update-only; use /collect_context to collect rows")
-        new_bio = await provider.get_bio(force=(mode == "context_prod"))
-        await bot.telegram.update_bio(new_bio)
-        commit = getattr(provider, "commit_successful_update", None)
-        if commit:
-            await commit(new_bio)
-        bot.record_bio_update(new_bio, mode)
-        await event.respond(
-            f"✅ Био обновлено:\n<code>{new_bio}</code>",
-            parse_mode="html",
-        )
-        logger.info("Bio updated via /new command: %s", new_bio)
-    except ContextBatchNotReady as exc:
-        logger.info("Bio update skipped: %s", exc)
-        await event.respond(
-            "⏳ Context batch ещё не готов.\n"
-            f"<code>{exc}</code>\n\n"
-            "Сначала собери больше новых сообщений через /collect_context.",
-            parse_mode="html",
-        )
-    except Exception:
-        logger.exception("Error during /new command")
-        await event.respond("❌ Ошибка при обновлении био. Проверьте логи.")
+    await event.respond(await run_new(bot), parse_mode="html")

@@ -15,7 +15,6 @@ from telebio.services.handlers.history import handle_history
 from telebio.services.handlers.set_mode import handle_set_mode
 from telebio.services.handlers.new import handle_new
 from telebio.services.handlers.pause import handle_pause
-from telebio.services.handlers.update_context import handle_update_context
 from telebio.context_exceptions import ContextBatchNotReady
 
 
@@ -58,14 +57,14 @@ def _make_event(pattern_match_group: str | None = None) -> AsyncMock:
 class TestHandleStatus:
 
     async def test_status_shows_mode_and_state(self) -> None:
-        bot = _make_bot(current_mode={"mode": "llm"})
+        bot = _make_bot(current_mode={"mode": "llm_prompt_generation"})
         event = _make_event()
 
         await handle_status(event, bot)
 
         event.respond.assert_awaited_once()
         text = event.respond.call_args[0][0]
-        assert "llm" in text
+        assert "llm_prompt_generation" in text
         assert "активно" in text
 
     async def test_status_shows_paused(self) -> None:
@@ -118,7 +117,7 @@ class TestHandleHistory:
     async def test_history_with_entries(self) -> None:
         bot = _make_bot()
         bot.record_bio_update("first", "list")
-        bot.record_bio_update("second", "llm")
+        bot.record_bio_update("second", "llm_prompt_generation")
         event = _make_event()
 
         await handle_history(event, bot)
@@ -127,7 +126,7 @@ class TestHandleHistory:
         assert "first" in text
         assert "second" in text
         assert "list" in text
-        assert "llm" in text
+        assert "llm_prompt_generation" in text
 
 
 # ------------------------------------------------------------------
@@ -139,13 +138,13 @@ class TestHandleSetMode:
 
     async def test_set_mode_switches(self) -> None:
         bot = _make_bot(current_mode={"mode": "list"})
-        event = _make_event(pattern_match_group="llm")
+        event = _make_event(pattern_match_group="llm_prompt_generation")
 
         await handle_set_mode(event, bot)
 
-        assert bot.current_mode["mode"] == "llm"
+        assert bot.current_mode["mode"] == "llm_prompt_generation"
         text = event.respond.call_args[0][0]
-        assert "llm" in text
+        assert "llm_prompt_generation" in text
 
     async def test_set_mode_same_mode(self) -> None:
         bot = _make_bot(current_mode={"mode": "list"})
@@ -154,7 +153,7 @@ class TestHandleSetMode:
         await handle_set_mode(event, bot)
 
         text = event.respond.call_args[0][0]
-        assert "Already" in text
+        assert "Уже выбран" in text
 
     async def test_set_mode_invalid(self) -> None:
         bot = _make_bot()
@@ -163,16 +162,16 @@ class TestHandleSetMode:
         await handle_set_mode(event, bot)
 
         text = event.respond.call_args[0][0]
-        assert "Invalid" in text
+        assert "Неизвестный режим" in text
         assert bot.current_mode["mode"] == "list"
 
     async def test_set_mode_case_insensitive(self) -> None:
         bot = _make_bot(current_mode={"mode": "list"})
-        event = _make_event(pattern_match_group="LLM")
+        event = _make_event(pattern_match_group="TELEGRAM_CONTEXT")
 
         await handle_set_mode(event, bot)
 
-        assert bot.current_mode["mode"] == "llm"
+        assert bot.current_mode["mode"] == "telegram_context"
 
 
 # ------------------------------------------------------------------
@@ -250,7 +249,7 @@ class TestHandleNew:
             return p
 
         bot = _make_bot(
-            current_mode={"mode": "context_prod"},
+            current_mode={"mode": "telegram_context"},
             telegram=mock_tg,
             provider_factory=factory,
         )
@@ -261,7 +260,7 @@ class TestHandleNew:
         mock_tg.update_bio.assert_not_awaited()
         text = event.respond.call_args[0][0]
         assert "batch ещё не готов" in text
-        assert "/collect_context" in text
+        assert "/collect" in text
 
     async def test_new_uses_current_mode(self) -> None:
         mock_tg = AsyncMock()
@@ -274,7 +273,7 @@ class TestHandleNew:
             return p
 
         bot = _make_bot(
-            current_mode={"mode": "llm"},
+            current_mode={"mode": "llm_prompt_generation"},
             telegram=mock_tg,
             provider_factory=factory,
         )
@@ -282,34 +281,7 @@ class TestHandleNew:
 
         await handle_new(event, bot)
 
-        assert captured_modes == ["llm"]
-
-
-# ------------------------------------------------------------------
-# /update_context
-# ------------------------------------------------------------------
-
-
-class TestHandleUpdateContext:
-
-    async def test_update_context_handles_batch_not_ready_without_update(self) -> None:
-        mock_tg = AsyncMock()
-
-        def factory(mode: str):
-            assert mode == "context_prod"
-            p = AsyncMock()
-            p.get_bio.side_effect = ContextBatchNotReady("pending maybe/keep=9")
-            return p
-
-        bot = _make_bot(telegram=mock_tg, provider_factory=factory)
-        event = _make_event()
-
-        await handle_update_context(event, bot)
-
-        mock_tg.update_bio.assert_not_awaited()
-        text = event.respond.call_args[0][0]
-        assert "batch ещё не готов" in text
-        assert "/collect_context" in text
+        assert captured_modes == ["llm_prompt_generation"]
 
 
 # ------------------------------------------------------------------
@@ -388,11 +360,11 @@ class TestBotServiceUnit:
         mock_tg = AsyncMock()
         factory = lambda m: AsyncMock()
         bot = _make_bot(
-            current_mode={"mode": "llm"},
+            current_mode={"mode": "llm_prompt_generation"},
             telegram=mock_tg,
             provider_factory=factory,
         )
-        assert bot.current_mode == {"mode": "llm"}
+        assert bot.current_mode == {"mode": "llm_prompt_generation"}
         assert bot.telegram is mock_tg
         assert bot.provider_factory is factory
         assert bot.last_bio == ""

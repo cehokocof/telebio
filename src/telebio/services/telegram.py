@@ -12,7 +12,7 @@ from telethon import TelegramClient, errors, functions
 from telethon.tl.types import Message
 
 if TYPE_CHECKING:
-    from telebio.context_prod import ContextMessage
+    from telebio.telegram_context import ContextMessage
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,7 +102,7 @@ class TelegramService:
         Incoming messages are fetched alongside (no ``from_user`` filter) but
         their text is discarded — only their timestamps act as a barrier.
         """
-        from telebio.context_prod import ContextMessage
+        from telebio.telegram_context import ContextMessage
 
         cutoff = datetime.now(UTC) - timedelta(days=days)
         collected: list[ContextMessage] = []
@@ -250,7 +250,7 @@ def _group_with_barriers(
       * either gap_seconds <= 0 is disabled (still глюёт неограниченно), or
         Δt(neighbour) ≤ gap_seconds.
     """
-    from telebio.context_prod import ContextMessage
+    from telebio.telegram_context import ContextMessage
 
     if not events:
         return []

@@ -32,7 +32,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from telebio.config import load_settings  # noqa: E402
-from telebio.context_prod import ContextMessage, _from_iso  # noqa: E402
+from telebio.telegram_context import ContextMessage, _from_iso  # noqa: E402
 from telebio.services.telegram import (  # noqa: E402
     _TimelineEvent,
     _group_with_barriers,
@@ -119,7 +119,7 @@ def _format_group(group: list[ContextMessage], indent: str = "    ") -> str:
 def main() -> None:
     settings = load_settings()
     parser = argparse.ArgumentParser()
-    parser.add_argument("--gap", type=int, default=settings.context_prod_merge_gap_seconds)
+    parser.add_argument("--gap", type=int, default=settings.telegram_context_merge_gap_seconds)
     parser.add_argument(
         "--cache", type=Path,
         default=ROOT / "data" / "dry_run_events.parquet",

@@ -46,6 +46,7 @@ async def run_scheduler(
 
     active_provider = provider
     last_mode = current_mode.get("mode") if current_mode else None
+    last_prompt = current_mode.get("prompt_name") if current_mode else None
 
     while True:
         try:
@@ -54,13 +55,18 @@ async def run_scheduler(
                 await asyncio.sleep(interval_seconds)
                 continue
 
-            # Check if mode changed and rebuild provider if needed
+            # Rebuild the provider if the mode or active prompt changed
             if current_mode and provider_factory:
                 new_mode = current_mode.get("mode")
-                if new_mode and new_mode != last_mode:
-                    logger.info("Mode changed from '%s' to '%s', rebuilding provider", last_mode, new_mode)
+                new_prompt = current_mode.get("prompt_name")
+                if new_mode and (new_mode != last_mode or new_prompt != last_prompt):
+                    logger.info(
+                        "Provider config changed (mode '%s'→'%s', prompt '%s'→'%s'), rebuilding",
+                        last_mode, new_mode, last_prompt, new_prompt,
+                    )
                     active_provider = provider_factory(new_mode)
                     last_mode = new_mode
+                    last_prompt = new_prompt
             
             new_bio = await active_provider.get_bio()
             await telegram.update_bio(new_bio)

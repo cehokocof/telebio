@@ -13,6 +13,7 @@ from telethon import TelegramClient
 from telebio.services.handlers import register_all
 
 if TYPE_CHECKING:
+    from telebio.prompts import Prompt
     from telebio.providers.base import BioProvider
     from telebio.services.telegram import TelegramService
 
@@ -30,6 +31,7 @@ class BotService:
         current_mode: dict[str, str],
         telegram: TelegramService | None = None,
         provider_factory: Callable[[str], BioProvider] | None = None,
+        prompts: list[Prompt] | None = None,
     ) -> None:
         """Initialize bot service.
 
@@ -37,15 +39,17 @@ class BotService:
             bot_token: Telegram bot token from @BotFather
             api_id: Telegram API ID
             api_hash: Telegram API hash
-            current_mode: Dict reference to track current bio provider mode
+            current_mode: Dict reference to track current mode and active prompt
             telegram: Telegram service for updating bio
             provider_factory: Factory to build a provider by mode name
+            prompts: Named prompts available for llm_prompt_generation
         """
         self._bot = TelegramClient("bot_session", api_id, api_hash)
         self._token = bot_token
         self._current_mode = current_mode
         self._telegram = telegram
         self._provider_factory = provider_factory
+        self._prompts: list[Prompt] = prompts or []
         self._history: deque[dict] = deque(maxlen=10)
         self._last_bio: str = ""
         self._last_update: datetime | None = None
@@ -67,6 +71,14 @@ class BotService:
     @property
     def provider_factory(self) -> Callable[[str], BioProvider] | None:
         return self._provider_factory
+
+    @property
+    def prompts(self) -> list[Prompt]:
+        return self._prompts
+
+    @property
+    def prompt_name(self) -> str | None:
+        return self._current_mode.get("prompt_name")
 
     @property
     def last_bio(self) -> str:
@@ -123,6 +135,10 @@ class BotService:
     def toggle_pause(self) -> None:
         """Flip the paused flag."""
         self._paused = not self._paused
+
+    def set_prompt(self, name: str) -> None:
+        """Set the active named prompt for llm_prompt_generation."""
+        self._current_mode["prompt_name"] = name
 
     # ------------------------------------------------------------------
     # Context manager

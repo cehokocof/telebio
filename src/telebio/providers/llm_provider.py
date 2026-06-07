@@ -56,11 +56,13 @@ class LLMBioProvider:
         examples_path: Path,
         model: str = "yandexgpt-lite/latest",
         temperature: float = 0.9,
+        system_prompt: str | None = None,
     ) -> None:
         self._api_key = api_key
         self._folder_id = folder_id
         self._model_uri = f"gpt://{folder_id}/{model}"
         self._temperature = temperature
+        self._system_prompt = system_prompt or _SYSTEM_PROMPT
         self._examples = self._load_examples(examples_path)
 
         logger.info(
@@ -100,7 +102,7 @@ class LLMBioProvider:
     def _build_request_body(self) -> dict[str, Any]:
         """Construct the JSON payload with system prompt + few-shot examples."""
         messages: list[dict[str, str]] = [
-            {"role": "system", "text": _SYSTEM_PROMPT},
+            {"role": "system", "text": self._system_prompt},
         ]
 
         # Few-shot: each example is presented as a user request → assistant response pair
