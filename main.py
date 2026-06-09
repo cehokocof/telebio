@@ -110,6 +110,7 @@ def _build_provider_by_mode(
                     max_maybe_prompt_messages=(
                         settings.telegram_context_max_maybe_prompt_messages
                     ),
+                    max_prompt_chars=settings.telegram_context_max_prompt_chars,
                     dialog_scan_limit=settings.telegram_context_dialog_scan_limit,
                     per_dialog_limit=settings.telegram_context_per_dialog_limit,
                     merge_gap_seconds=settings.telegram_context_merge_gap_seconds,

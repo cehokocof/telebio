@@ -13,9 +13,9 @@ from telebio.context_exceptions import ContextBatchNotReady
 from telebio.modes import (
     MODE_LIST,
     MODE_TELEGRAM_CONTEXT,
-    display,
     is_valid,
 )
+from telebio.services import texts
 
 if TYPE_CHECKING:
     from telebio.services.bot import BotService
@@ -25,89 +25,61 @@ logger = logging.getLogger(__name__)
 
 def menu_text(bot: BotService) -> str:
     """Header text for the main menu."""
-    mode = bot.current_mode.get("mode", "unknown")
-    state = "⏸ приостановлено" if bot.paused else "▶️ активно"
-    lines = [
-        "🤖 <b>TeleBio</b>",
-        f"📊 <b>Режим:</b> {display(mode)}",
-        f"⏯ <b>Состояние:</b> {state}",
-        f"📝 <b>Био:</b> {bot.last_bio or '(none)'}",
-    ]
-    if bot.prompt_name:
-        lines.insert(2, f"🧩 <b>Промпт:</b> <code>{bot.prompt_name}</code>")
-    return "\n".join(lines)
+    return texts.menu_text(
+        mode=bot.current_mode.get("mode", "unknown"),
+        bio=bot.last_bio,
+        prompt_name=bot.prompt_name,
+    )
 
 
 def status_text(bot: BotService) -> str:
-    mode = bot.current_mode.get("mode", "unknown")
-    paused_label = "⏸ приостановлено" if bot.paused else "▶️ активно"
-    lines = [
-        "🤖 <b>TeleBio Status</b>",
-        "",
-        f"📊 <b>Mode:</b> {display(mode)}",
-        f"⏯ <b>State:</b> {paused_label}",
-        f"📝 <b>Current bio:</b> {bot.last_bio or '(none)'}",
-    ]
-    if bot.last_update:
-        lines.append(
-            f"🕐 <b>Last update:</b> {bot.last_update.strftime('%Y-%m-%d %H:%M:%S')}"
-        )
-    return "\n".join(lines)
+    last_update = (
+        bot.last_update.strftime("%Y-%m-%d %H:%M:%S") if bot.last_update else None
+    )
+    return texts.status_text(
+        mode=bot.current_mode.get("mode", "unknown"),
+        paused=bot.paused,
+        bio=bot.last_bio,
+        last_update=last_update,
+    )
 
 
 def history_text(bot: BotService) -> str:
-    if not bot.history:
-        return "📜 No history available yet."
-    lines = ["📜 <b>Recent Bio Updates:</b>", ""]
-    for i, entry in enumerate(reversed(bot.history), 1):
-        lines.append(
-            f"{i}. [{entry['timestamp']}] <code>{entry['mode']}</code>\n"
-            f"   {entry['bio']}"
-        )
-    return "\n\n".join(lines)
+    return texts.history_text(bot.history)
 
 
 def toggle_pause_text(bot: BotService) -> str:
     bot.toggle_pause()
     if bot.paused:
         logger.info("Auto-update paused")
-        return (
-            "⏸ Автообновление приостановлено.\n"
-            "Текущее био сохранено. Нажми ещё раз, чтобы возобновить."
-        )
+        return texts.PAUSE_PAUSED
     logger.info("Auto-update resumed")
-    return "▶️ Автообновление возобновлено."
+    return texts.PAUSE_RESUMED
 
 
 def apply_mode(bot: BotService, mode: str) -> str:
     """Switch the active bio-provider mode."""
     mode = mode.strip().lower()
     if not is_valid(mode):
-        return (
-            "❌ Неизвестный режим. Доступны: <code>list</code>, "
-            "<code>llm_prompt_generation</code>, <code>telegram_context</code>."
-        )
+        return texts.MODE_UNKNOWN
     if mode == bot.current_mode.get("mode", ""):
-        return f"ℹ️ Уже выбран режим {display(mode)}."
+        return texts.mode_already(mode)
     bot.current_mode["mode"] = mode
     logger.info("Mode switched to '%s'", mode)
-    return (
-        f"✅ Режим переключён на {display(mode)}\n"
-        "Следующее обновление использует новый провайдер."
-    )
+    return texts.mode_switched(mode)
 
 
 def apply_prompt(bot: BotService, name: str) -> str:
     """Select the active named prompt for llm_prompt_generation."""
     bot.set_prompt(name)
     logger.info("Active prompt set to '%s'", name)
-    return f"✅ Активный промпт: <code>{name}</code>"
+    return texts.prompt_applied(name)
 
 
 async def run_new(bot: BotService) -> str:
     """Generate and apply a fresh bio using the current mode."""
     if not bot.telegram or not bot.provider_factory:
-        return "❌ Bot не настроен для обновления био."
+        return texts.NEW_NOT_CONFIGURED
 
     mode = bot.current_mode.get("mode", MODE_LIST)
     try:
@@ -122,38 +94,27 @@ async def run_new(bot: BotService) -> str:
             await commit(new_bio)
         bot.record_bio_update(new_bio, mode)
         logger.info("Bio updated via /new: %s", new_bio)
-        return f"✅ Био обновлено:\n<code>{new_bio}</code>"
+        return texts.new_success(new_bio)
     except ContextBatchNotReady as exc:
         logger.info("Bio update skipped: %s", exc)
-        return (
-            "⏳ Context batch ещё не готов.\n"
-            f"<code>{exc}</code>\n\n"
-            "Сначала собери больше новых сообщений через /collect."
-        )
+        return texts.new_batch_not_ready(str(exc))
     except Exception:
         logger.exception("Error during /new")
-        return "❌ Ошибка при обновлении био. Проверьте логи."
+        return texts.NEW_ERROR
 
 
 async def run_collect(bot: BotService) -> str:
     """Collect and classify context rows into the parquet dataset."""
     if not bot.provider_factory:
-        return "❌ Bot не настроен для сбора контекста."
+        return texts.COLLECT_NOT_CONFIGURED
     try:
         provider = bot.provider_factory(MODE_TELEGRAM_CONTEXT)
         collect = getattr(provider, "collect_context", None)
         if collect is None:
-            return "❌ Текущий provider не поддерживает сбор контекста."
+            return texts.COLLECT_NOT_SUPPORTED
         stats = await collect()
         logger.info("Context collected: %s", stats)
-        return (
-            "✅ Context collected\n"
-            f"collected: <code>{stats['collected']}</code>\n"
-            f"changed_rows: <code>{stats['changed_rows']}</code>\n"
-            f"classified: <code>{stats['classified']}</code>\n"
-            f"pending_keep: <code>{stats['pending_keep']}</code>\n"
-            f"pending_maybe: <code>{stats['pending_maybe']}</code>"
-        )
+        return texts.collect_success(stats)
     except Exception:
         logger.exception("Error during /collect")
-        return "❌ Ошибка при сборе контекста. Проверьте логи."
+        return texts.COLLECT_ERROR

@@ -22,16 +22,24 @@ if TYPE_CHECKING:
 
 def main_menu(bot: BotService) -> list[list[Button]]:
     mode = bot.current_mode.get("mode", "")
-    pause_label = "▶️ Продолжить" if bot.paused else "⏸ Пауза"
     rows: list[list[Button]] = [
         [Button.inline("✨ Новое био", b"act:new")],
-        [Button.inline("🔄 Режим", b"menu:modes"), Button.inline("📜 История", b"act:history")],
-        [Button.inline(pause_label, b"act:pause"), Button.inline("📊 Статус", b"act:status")],
+        [
+            Button.inline("🔄 Режим", b"menu:modes"),
+            Button.inline("📜 История", b"act:history"),
+            Button.inline("📊 Статус", b"act:status"),
+        ],
     ]
     if mode == MODE_LLM:
         rows.append([Button.inline("🧩 Промпты", b"menu:prompts")])
     if mode == MODE_TELEGRAM_CONTEXT:
         rows.append([Button.inline("📥 Собрать контекст", b"act:collect")])
+    state_label = (
+        "⏸ На паузе — нажми, чтобы продолжить"
+        if bot.paused
+        else "▶️ Активно — нажми, чтобы пауза"
+    )
+    rows.append([Button.inline(state_label, b"act:pause")])
     return rows
 
 

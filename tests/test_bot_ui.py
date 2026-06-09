@@ -109,10 +109,16 @@ class TestKeyboards:
         rows = keyboards.main_menu(_make_bot("llm_prompt_generation"))
         assert "menu:prompts" in _datas(rows)
 
-    def test_main_menu_pause_label_reflects_state(self) -> None:
-        bot = _make_bot("list")
-        bot.toggle_pause()
-        assert any("Продолжить" in t for t in _texts(keyboards.main_menu(bot)))
+    def test_main_menu_state_button_reflects_state(self) -> None:
+        active = _make_bot("list")
+        assert any("Активно" in t for t in _texts(keyboards.main_menu(active)))
+        paused = _make_bot("list")
+        paused.toggle_pause()
+        assert any("На паузе" in t for t in _texts(keyboards.main_menu(paused)))
+
+    def test_main_menu_state_button_is_last_row(self) -> None:
+        rows = keyboards.main_menu(_make_bot("telegram_context"))
+        assert [b.data.decode() for b in rows[-1]] == ["act:pause"]
 
     def test_mode_menu_marks_current(self) -> None:
         rows = keyboards.mode_menu("telegram_context")

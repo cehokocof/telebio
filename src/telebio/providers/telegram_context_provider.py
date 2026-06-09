@@ -11,16 +11,16 @@ from typing import TYPE_CHECKING
 
 import httpx
 
-from telebio.context_prod import (
+from telebio.telegram_context import (
     ContextBatch,
     ContextBatchNotReady,
-    ContextProdStore,
+    TelegramContextStore,
     Mix0035Classifier,
 )
 from telebio.services.telegram import TelegramService
 
 if TYPE_CHECKING:
-    from telebio.context_prod import QueuedContextMessage
+    from telebio.telegram_context import QueuedContextMessage
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ _YANDEX_COMPLETION_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/c
 
 
 @dataclass(frozen=True, slots=True)
-class ContextProdProviderConfig:
+class TelegramContextProviderConfig:
     dataset_path: Path
     report_dir: Path
     model_dir: Path
@@ -52,20 +52,21 @@ class ContextProdProviderConfig:
     per_dialog_limit: int
     merge_gap_seconds: int = 0
     max_message_length: int = 0
+    max_prompt_chars: int = 0
 
 
-class ContextProdBioProvider:
+class TelegramContextBioProvider:
     """Collects recent outgoing messages, classifies them, then generates bio."""
 
     def __init__(
         self,
         *,
         telegram: TelegramService,
-        config: ContextProdProviderConfig,
+        config: TelegramContextProviderConfig,
     ) -> None:
         self._telegram = telegram
         self._config = config
-        self._store = ContextProdStore(config.dataset_path)
+        self._store = TelegramContextStore(config.dataset_path)
         self._classifier = Mix0035Classifier(
             config.model_dir,
             stage1_model_name=config.stage1_model,
@@ -78,7 +79,7 @@ class ContextProdBioProvider:
         self._pending_batch: ContextBatch | None = None
         self._pending_bio: str | None = None
         logger.info(
-            "ContextProdBioProvider initialised (dataset=%s, model_dir=%s, fetch_days=%d, "
+            "TelegramContextBioProvider initialised (dataset=%s, model_dir=%s, fetch_days=%d, "
             "min_batch=%d, fallback=%d/%dd)",
             config.dataset_path,
             config.model_dir,
@@ -144,7 +145,7 @@ class ContextProdBioProvider:
         self._pending_bio = None
 
     async def _generate_bio(self, batch: ContextBatch) -> str:
-        prompt = _build_prompt(batch)
+        prompt = _build_prompt(batch, max_chars=self._config.max_prompt_chars)
         report_path = _write_api_report(
             self._config.report_dir,
             batch=batch,
@@ -230,10 +231,44 @@ class ContextProdBioProvider:
         return batch
 
 
-def _build_prompt(batch: ContextBatch) -> str:
+def _build_prompt(batch: ContextBatch, *, max_chars: int = 0) -> str:
+    """Assemble the YandexGPT prompt, dropping messages to fit ``max_chars``.
+
+    ``max_chars <= 0`` disables the budget. When the rendered prompt is over
+    budget, the oldest ``maybe`` messages are dropped first, then the oldest
+    ``keep`` messages, until it fits (instructions are always kept).
+    """
     keep_messages = [message for message in batch.messages if message.label == "keep"]
     maybe_messages = [message for message in batch.messages if message.label == "maybe"]
 
+    prompt = _render_prompt(keep_messages, maybe_messages)
+    if max_chars <= 0 or len(prompt) <= max_chars:
+        return prompt
+
+    dropped_keep = dropped_maybe = 0
+    while len(prompt) > max_chars and (maybe_messages or keep_messages):
+        if maybe_messages:
+            maybe_messages.pop(0)
+            dropped_maybe += 1
+        else:
+            keep_messages.pop(0)
+            dropped_keep += 1
+        prompt = _render_prompt(keep_messages, maybe_messages)
+
+    logger.warning(
+        "Prompt exceeded %d chars; dropped %d keep + %d maybe to fit (final=%d)",
+        max_chars,
+        dropped_keep,
+        dropped_maybe,
+        len(prompt),
+    )
+    return prompt
+
+
+def _render_prompt(
+    keep_messages: list["QueuedContextMessage"],
+    maybe_messages: list["QueuedContextMessage"],
+) -> str:
     lines = [
         "- Задача: придумай новое Telegram bio по моим последним сообщениям.",
         "- Стиль: смешно, саркастично, немного дерзко, но без кринжового стендапа.",

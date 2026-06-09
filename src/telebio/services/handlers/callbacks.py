@@ -9,7 +9,7 @@ from telethon import events
 from telethon.errors import MessageNotModifiedError
 
 from telebio.modes import MODE_LLM
-from telebio.services import actions
+from telebio.services import actions, texts
 from telebio.services.keyboards import main_menu, mode_menu, prompts_menu
 
 if TYPE_CHECKING:
@@ -17,11 +17,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_MODE_MENU_TEXT = "🔄 Выбери режим:"
-
 
 def _prompts_header(bot: BotService) -> str:
-    return f"🧩 Промпты · активный: <code>{bot.prompt_name or '—'}</code>"
+    return texts.prompts_header(bot.prompt_name)
 
 
 async def _safe_edit(event: events.CallbackQuery.Event, text: str, buttons) -> None:
@@ -38,7 +36,7 @@ async def handle_callback(event: events.CallbackQuery.Event, bot: BotService) ->
     if data == "menu:main":
         await _safe_edit(event, actions.menu_text(bot), main_menu(bot))
     elif data == "menu:modes":
-        await _safe_edit(event, _MODE_MENU_TEXT, mode_menu(bot.current_mode.get("mode", "")))
+        await _safe_edit(event, texts.MODE_MENU, mode_menu(bot.current_mode.get("mode", "")))
     elif data == "menu:prompts":
         await _safe_edit(event, _prompts_header(bot), prompts_menu(bot.prompts, bot.prompt_name))
     elif data.startswith("mode:"):
@@ -58,14 +56,14 @@ async def handle_callback(event: events.CallbackQuery.Event, bot: BotService) ->
         if prompt is not None:
             await event.answer()
             await event.respond(
-                f"🧩 <b>{prompt.name}</b>\n\n{prompt.system}", parse_mode="html"
+                texts.prompt_view(prompt.name, prompt.system), parse_mode="html"
             )
     elif data == "act:new":
-        await event.answer("Генерирую…")
+        await event.answer(texts.TOAST_GENERATING)
         await event.respond(await actions.run_new(bot), parse_mode="html")
     elif data == "act:collect":
-        await event.answer("Собираю…")
-        await event.respond("⏳ Собираю сообщения и обновляю parquet dataset…")
+        await event.answer(texts.TOAST_COLLECTING)
+        await event.respond(texts.COLLECT_PROGRESS)
         await event.respond(await actions.run_collect(bot), parse_mode="html")
     elif data == "act:status":
         await event.answer()

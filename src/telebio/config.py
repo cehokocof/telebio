@@ -75,6 +75,9 @@ class Settings:
     telegram_context_fallback_max_age_days: int = 7
     telegram_context_max_prompt_messages: int = 20
     telegram_context_max_maybe_prompt_messages: int = 5
+    # Hard cap on the assembled YandexGPT prompt size (chars). Messages are
+    # dropped to fit so the request never exceeds the model's context window.
+    telegram_context_max_prompt_chars: int = 6000
     telegram_context_dataset: str = "data/telegram_context.parquet"
     telegram_context_report_dir: str = "logs/context_api_reports"
     telegram_context_model_dir: str = "data/prod_models/mix0035"
@@ -162,6 +165,9 @@ def load_settings() -> Settings:
         ),
         telegram_context_max_maybe_prompt_messages=int(
             _get_env("TELEGRAM_CONTEXT_MAX_MAYBE_PROMPT_MESSAGES", default="5")
+        ),
+        telegram_context_max_prompt_chars=int(
+            _get_env("TELEGRAM_CONTEXT_MAX_PROMPT_CHARS", default="6000")
         ),
         telegram_context_dataset=_get_env(
             "TELEGRAM_CONTEXT_DATASET", default="data/telegram_context.parquet"

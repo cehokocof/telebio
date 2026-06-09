@@ -7,26 +7,15 @@ from typing import TYPE_CHECKING
 
 from telethon import events
 
-from telebio.modes import MODE_DESCRIPTIONS, MODE_LABELS, MODES
 from telebio.services.keyboards import mode_menu
+from telebio.services.texts import onboarding_text
 
 if TYPE_CHECKING:
     from telebio.services.bot import BotService
 
 logger = logging.getLogger(__name__)
 
-
-def onboarding_text() -> str:
-    lines = [
-        "👋 Привет! Это <b>TeleBio</b> — он сам меняет твоё Telegram bio.",
-        "",
-        "Выбери режим работы:",
-        "",
-    ]
-    for key in MODES:
-        lines.append(f"• <b>{MODE_LABELS[key]}</b> (<code>{key}</code>)")
-        lines.append(f"  {MODE_DESCRIPTIONS[key]}")
-    return "\n".join(lines)
+__all__ = ["handle_start", "onboarding_text"]
 
 
 async def handle_start(event: events.NewMessage.Event, bot: BotService) -> None:
