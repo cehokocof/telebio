@@ -79,7 +79,7 @@ class ContextBatch:
     included_maybe_count: int = 0
 
 
-class ContextProdStore:
+class TelegramContextStore:
     """Parquet-backed context dataset used by runtime and future training."""
 
     _columns = (
@@ -396,12 +396,12 @@ class Mix0035Classifier:
         missing = [str(path) for path in (stage1_path, stage2_path) if not path.exists()]
         if missing:
             raise FileNotFoundError(
-                "context_prod model artifacts are missing: "
+                "telegram_context model artifacts are missing: "
                 + ", ".join(missing)
-                + ". Expected mix0035 artifacts in CONTEXT_PROD_MODEL_DIR."
+                + ". Expected mix0035 artifacts in TELEGRAM_CONTEXT_MODEL_DIR."
             )
 
-        logger.info("Loading context_prod model artifacts from %s", self._model_dir)
+        logger.info("Loading telegram_context model artifacts from %s", self._model_dir)
         stage1 = CatBoostClassifier()
         stage1.load_model(stage1_path)
         with stage2_path.open("rb") as fh:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from telebio.context_prod import ContextMessage, ContextProdStore
+from telebio.telegram_context import ContextMessage, TelegramContextStore
 
 
 def _message(index: int, *, days_ago: int = 0, text: str | None = None) -> ContextMessage:
@@ -17,7 +17,7 @@ def _message(index: int, *, days_ago: int = 0, text: str | None = None) -> Conte
 
 
 def test_store_deduplicates_messages(tmp_path) -> None:
-    store = ContextProdStore(tmp_path / "context.sqlite3")
+    store = TelegramContextStore(tmp_path / "context.sqlite3")
     messages = [_message(1), _message(1)]
 
     assert store.upsert_messages(messages) == 1
@@ -25,7 +25,7 @@ def test_store_deduplicates_messages(tmp_path) -> None:
 
 
 def test_ready_batch_uses_latest_prompt_messages(tmp_path) -> None:
-    store = ContextProdStore(tmp_path / "context.sqlite3")
+    store = TelegramContextStore(tmp_path / "context.sqlite3")
     store.upsert_messages([_message(index) for index in range(25)])
     store.save_labels({message.id: "keep" for message in store.unclassified_messages()})
 
@@ -50,7 +50,7 @@ def test_ready_batch_uses_latest_prompt_messages(tmp_path) -> None:
 
 
 def test_store_updates_unprocessed_edited_message_and_resets_label(tmp_path) -> None:
-    store = ContextProdStore(tmp_path / "context.sqlite3")
+    store = TelegramContextStore(tmp_path / "context.sqlite3")
     store.upsert_messages([_message(1, text="old text")])
     first = store.unclassified_messages()[0]
     store.save_labels({first.id: "drop"})
@@ -63,7 +63,7 @@ def test_store_updates_unprocessed_edited_message_and_resets_label(tmp_path) -> 
 
 
 def test_ready_batch_fallback_after_age_threshold(tmp_path) -> None:
-    store = ContextProdStore(tmp_path / "context.sqlite3")
+    store = TelegramContextStore(tmp_path / "context.sqlite3")
     store.upsert_messages([_message(index, days_ago=8) for index in range(10)])
     store.save_labels({message.id: "maybe" for message in store.unclassified_messages()})
 
@@ -83,7 +83,7 @@ def test_ready_batch_fallback_after_age_threshold(tmp_path) -> None:
 
 
 def test_ready_batch_limits_maybe_but_keeps_strong_context(tmp_path) -> None:
-    store = ContextProdStore(tmp_path / "context.sqlite3")
+    store = TelegramContextStore(tmp_path / "context.sqlite3")
     store.upsert_messages([_message(index) for index in range(30)])
     rows = store.unclassified_messages()
     store.save_labels(
@@ -110,7 +110,7 @@ def test_ready_batch_limits_maybe_but_keeps_strong_context(tmp_path) -> None:
 
 
 def test_ready_batch_does_not_use_previous_history_before_min_batch(tmp_path) -> None:
-    store = ContextProdStore(tmp_path / "context.parquet")
+    store = TelegramContextStore(tmp_path / "context.parquet")
     store.upsert_messages([_message(index) for index in range(18)])
     store.save_labels({message.id: "keep" for message in store.unclassified_messages()})
 
@@ -126,7 +126,7 @@ def test_ready_batch_does_not_use_previous_history_before_min_batch(tmp_path) ->
 
 
 def test_ready_batch_force_uses_recent_keep_maybe_before_min_batch(tmp_path) -> None:
-    store = ContextProdStore(tmp_path / "context.parquet")
+    store = TelegramContextStore(tmp_path / "context.parquet")
     store.upsert_messages([_message(index, days_ago=1) for index in range(9)])
     store.save_labels({message.id: "maybe" for message in store.unclassified_messages()})
 
@@ -148,7 +148,7 @@ def test_ready_batch_force_uses_recent_keep_maybe_before_min_batch(tmp_path) -> 
 
 
 def test_ready_batch_force_ignores_old_pending_messages(tmp_path) -> None:
-    store = ContextProdStore(tmp_path / "context.parquet")
+    store = TelegramContextStore(tmp_path / "context.parquet")
     store.upsert_messages([_message(index, days_ago=8) for index in range(9)])
     store.save_labels({message.id: "maybe" for message in store.unclassified_messages()})
 
@@ -166,7 +166,7 @@ def test_ready_batch_force_ignores_old_pending_messages(tmp_path) -> None:
 
 
 def test_mark_used_removes_messages_from_pending_queue(tmp_path) -> None:
-    store = ContextProdStore(tmp_path / "context.sqlite3")
+    store = TelegramContextStore(tmp_path / "context.sqlite3")
     store.upsert_messages([_message(index) for index in range(3)])
     store.save_labels({message.id: "keep" for message in store.unclassified_messages()})
     pending = store.pending_selected_messages()

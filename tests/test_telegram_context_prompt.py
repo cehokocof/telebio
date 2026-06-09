@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from telebio.context_prod import ContextBatch, QueuedContextMessage
-from telebio.providers.context_prod_provider import _build_prompt, _normalise_generated_bio
+from telebio.telegram_context import ContextBatch, QueuedContextMessage
+from telebio.providers.telegram_context_provider import _build_prompt, _normalise_generated_bio
 
 
 def _queued(index: int, label: str, text: str) -> QueuedContextMessage:
