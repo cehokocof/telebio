@@ -24,7 +24,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--dataset",
-        default="data/context_labeling.parquet",
+        default="data/context_labeling_train.parquet",
         help="Labeling parquet with verified labels.",
     )
     parser.add_argument(

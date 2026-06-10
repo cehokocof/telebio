@@ -76,7 +76,6 @@ class TestLoadSettings:
         env = {
             "TELEGRAM_API_ID": "999",
             "TELEGRAM_API_HASH": "abc123",
-            "BIO_PROVIDER": "llm_prompt_generation",
             "UPDATE_INTERVAL_MINUTES": "30",
             "YANDEX_API_KEY": "key",
             "YANDEX_FOLDER_ID": "folder",
@@ -87,7 +86,7 @@ class TestLoadSettings:
 
         assert s.api_id == 999
         assert s.api_hash == "abc123"
-        assert s.bio_provider == "llm_prompt_generation"
+        assert s.bio_provider == "list"
         assert s.update_interval_minutes == 30
         assert s.yandex_api_key == "key"
         assert s.yandex_folder_id == "folder"

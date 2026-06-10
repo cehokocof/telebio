@@ -15,6 +15,7 @@ from telebio.services.handlers import register_all
 if TYPE_CHECKING:
     from telebio.prompts import Prompt
     from telebio.providers.base import BioProvider
+    from telebio.services.state_store import StateStore
     from telebio.services.telegram import TelegramService
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ class BotService:
         telegram: TelegramService | None = None,
         provider_factory: Callable[[str], BioProvider] | None = None,
         prompts: list[Prompt] | None = None,
+        store: StateStore | None = None,
     ) -> None:
         """Initialize bot service.
 
@@ -43,6 +45,7 @@ class BotService:
             telegram: Telegram service for updating bio
             provider_factory: Factory to build a provider by mode name
             prompts: Named prompts available for llm_prompt_generation
+            store: Optional SQLite-backed persistence for state and history
         """
         self._bot = TelegramClient("bot_session", api_id, api_hash)
         self._token = bot_token
@@ -50,11 +53,32 @@ class BotService:
         self._telegram = telegram
         self._provider_factory = provider_factory
         self._prompts: list[Prompt] = prompts or []
-        self._history: deque[dict] = deque(maxlen=10)
+        self._history: deque[dict] = deque()
         self._last_bio: str = ""
         self._last_update: datetime | None = None
         self._owner_id: int | None = None
         self._paused: bool = False
+        self._store = store
+        if store is not None:
+            self._restore_from_store(store)
+
+    def _restore_from_store(self, store: StateStore) -> None:
+        settings = store.load_settings()
+        if "mode" in settings:
+            self._current_mode["mode"] = settings["mode"]
+        if "prompt_name" in settings:
+            self._current_mode["prompt_name"] = settings["prompt_name"]
+        self._paused = settings.get("paused", "0") == "1"
+        self._last_bio = settings.get("last_bio", "")
+        last_update_str = settings.get("last_update")
+        if last_update_str:
+            try:
+                self._last_update = datetime.strptime(
+                    last_update_str, "%Y-%m-%d %H:%M:%S"
+                )
+            except ValueError:
+                logger.warning("Bad last_update in store: %r", last_update_str)
+        self._history.extend(store.load_history())
 
     # ------------------------------------------------------------------
     # Public read-only properties used by handlers
@@ -130,15 +154,31 @@ class BotService:
             "mode": mode,
             "timestamp": self._last_update.strftime("%Y-%m-%d %H:%M:%S"),
         })
+        if self._store is not None:
+            self._store.append_bio(bio=bio, mode=mode, ts=self._last_update)
+            self._store.save_setting("last_bio", bio)
+            self._store.save_setting(
+                "last_update", self._last_update.strftime("%Y-%m-%d %H:%M:%S")
+            )
         logger.debug("Recorded bio update: %s", bio)
 
     def toggle_pause(self) -> None:
         """Flip the paused flag."""
         self._paused = not self._paused
+        if self._store is not None:
+            self._store.save_setting("paused", "1" if self._paused else "0")
 
     def set_prompt(self, name: str) -> None:
         """Set the active named prompt for llm_prompt_generation."""
         self._current_mode["prompt_name"] = name
+        if self._store is not None:
+            self._store.save_setting("prompt_name", name)
+
+    def set_mode(self, mode: str) -> None:
+        """Switch the active bio-provider mode and persist it."""
+        self._current_mode["mode"] = mode
+        if self._store is not None:
+            self._store.save_setting("mode", mode)
 
     # ------------------------------------------------------------------
     # Context manager

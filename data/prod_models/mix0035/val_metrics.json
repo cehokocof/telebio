@@ -1,0 +1,157 @@
+{
+  "model_version": "mix0035",
+  "evaluated_at": "2026-06-10T11:27:01+00:00",
+  "dataset": "data/context_labeling_val_gold.parquet",
+  "n_total": 683,
+  "n_personal": 571,
+  "n_group": 112,
+  "label_distribution": {
+    "gold": {
+      "drop": 426,
+      "maybe": 100,
+      "keep": 157
+    },
+    "predicted": {
+      "drop": 389,
+      "maybe": 117,
+      "keep": 177
+    }
+  },
+  "overall": {
+    "accuracy": 0.743777,
+    "macro_f1": 0.657266,
+    "weighted_f1": 0.750921,
+    "per_class": {
+      "drop": {
+        "label": 1,
+        "precision": 0.881748,
+        "recall": 0.805164,
+        "f1": 0.841718,
+        "support": 426
+      },
+      "maybe": {
+        "label": 2,
+        "precision": 0.376068,
+        "recall": 0.44,
+        "f1": 0.40553,
+        "support": 100
+      },
+      "keep": {
+        "label": 3,
+        "precision": 0.683616,
+        "recall": 0.770701,
+        "f1": 0.724551,
+        "support": 157
+      }
+    },
+    "confusion_matrix": {
+      "drop": {
+        "drop": 343,
+        "maybe": 53,
+        "keep": 30
+      },
+      "maybe": {
+        "drop": 30,
+        "maybe": 44,
+        "keep": 26
+      },
+      "keep": {
+        "drop": 16,
+        "maybe": 20,
+        "keep": 121
+      }
+    }
+  },
+  "by_category": {
+    "group": {
+      "accuracy": 0.767857,
+      "macro_f1": 0.674868,
+      "weighted_f1": 0.780782,
+      "per_class": {
+        "drop": {
+          "label": 1,
+          "precision": 0.894737,
+          "recall": 0.809524,
+          "f1": 0.85,
+          "support": 84
+        },
+        "maybe": {
+          "label": 2,
+          "precision": 0.333333,
+          "recall": 0.466667,
+          "f1": 0.388889,
+          "support": 15
+        },
+        "keep": {
+          "label": 3,
+          "precision": 0.733333,
+          "recall": 0.846154,
+          "f1": 0.785714,
+          "support": 13
+        }
+      },
+      "confusion_matrix": {
+        "drop": {
+          "drop": 68,
+          "maybe": 14,
+          "keep": 2
+        },
+        "maybe": {
+          "drop": 6,
+          "maybe": 7,
+          "keep": 2
+        },
+        "keep": {
+          "drop": 2,
+          "maybe": 0,
+          "keep": 11
+        }
+      }
+    },
+    "personal": {
+      "accuracy": 0.739054,
+      "macro_f1": 0.65583,
+      "weighted_f1": 0.745107,
+      "per_class": {
+        "drop": {
+          "label": 1,
+          "precision": 0.878594,
+          "recall": 0.804094,
+          "f1": 0.839695,
+          "support": 342
+        },
+        "maybe": {
+          "label": 2,
+          "precision": 0.385417,
+          "recall": 0.435294,
+          "f1": 0.40884,
+          "support": 85
+        },
+        "keep": {
+          "label": 3,
+          "precision": 0.679012,
+          "recall": 0.763889,
+          "f1": 0.718954,
+          "support": 144
+        }
+      },
+      "confusion_matrix": {
+        "drop": {
+          "drop": 275,
+          "maybe": 39,
+          "keep": 28
+        },
+        "maybe": {
+          "drop": 24,
+          "maybe": 37,
+          "keep": 24
+        },
+        "keep": {
+          "drop": 14,
+          "maybe": 20,
+          "keep": 110
+        }
+      }
+    }
+  }
+}

@@ -46,8 +46,12 @@ class Settings:
     # Interval between bio changes in minutes
     update_interval_minutes: int = 60
 
-    # Provider type: "list" | "llm_prompt_generation" | "telegram_context"
+    # Initial bio provider used at first launch (when nothing is persisted).
+    # Runtime mode is controlled via the management bot, not via env.
     bio_provider: str = "list"
+
+    # SQLite file with bot runtime state (mode/prompt/paused) and bio history.
+    state_db: str = "data/telebio_state.sqlite3"
 
     # Path to the phrases data file (relative to project root)
     phrases_file: str = "data/phrases.json"
@@ -116,6 +120,10 @@ class Settings:
         return str(self.project_root / self.session_name)
 
     @property
+    def state_db_path(self) -> Path:
+        return self.project_root / self.state_db
+
+    @property
     def telegram_context_dataset_path(self) -> Path:
         return self.project_root / self.telegram_context_dataset
 
@@ -138,7 +146,6 @@ def load_settings() -> Settings:
         update_interval_minutes=int(
             _get_env("UPDATE_INTERVAL_MINUTES", default="60")
         ),
-        bio_provider=_get_env("BIO_PROVIDER", default="list"),
         phrases_file=_get_env("PHRASES_FILE", default="data/phrases.json"),
         examples_file=_get_env("EXAMPLES_FILE", default="data/examples.json"),
         prompts_file=_get_env("PROMPTS_FILE", default="data/prompts.json"),

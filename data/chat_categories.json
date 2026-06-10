@@ -1,0 +1,908 @@
+{
+  "1003268324": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Т—Ж"
+  },
+  "1007302005": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Rozetked"
+  },
+  "1017689991": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "liz karpushina"
+  },
+  "1038597581": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Аndrew Davydov"
+  },
+  "1040329216": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Арина"
+  },
+  "1060733020": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "sssadness"
+  },
+  "1096873512": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "не тереби дао"
+  },
+  "1108096376": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Fucking English | Английский 18+"
+  },
+  "1116765745": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Hot Idioms | Английские идиомы"
+  },
+  "1135321588": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Английский с нуля | Английский язык"
+  },
+  "1157966678": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "DLS — новости"
+  },
+  "1158535533": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Алексей Шевцов"
+  },
+  "1170498799": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Т-Образование"
+  },
+  "1178238337": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Борис опять"
+  },
+  "1178879330": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "alena"
+  },
+  "1181478547": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "ФКН НИУ ВШЭ"
+  },
+  "1209838858": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Ярик"
+  },
+  "1209916065": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Маша does therapy"
+  },
+  "1210388473": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Яндекс Образование"
+  },
+  "1212891549": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "ML-легушька"
+  },
+  "1222869173": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "NN"
+  },
+  "1240154046": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Сливакер | IT"
+  },
+  "1271706510": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Александр Панчин"
+  },
+  "1288791823": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Love. Death. Transformers."
+  },
+  "1307778786": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Эксплойт"
+  },
+  "1321264581": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Data Science Jobs"
+  },
+  "1322266617": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "Тренировки по алгоритмам в Яндексе // чат для общения"
+  },
+  "1341387962": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Даня"
+  },
+  "1348267189": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Илья Начинкин"
+  },
+  "1404051113": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Матвей"
+  },
+  "1404899566": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "стас"
+  },
+  "1405104837": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Игорь Линк"
+  },
+  "1428828060": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Заквиель / Zakviel"
+  },
+  "1430881101": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "Yandex Infrastructure Community"
+  },
+  "1433806174": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Yandex for ML"
+  },
+  "1448743987": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Артём Герасимов"
+  },
+  "1451093003": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "𝗳𝟭𝗿𝘀𝘁𝗶𝗹𝘆’𝘀 𝗠𝗢𝗧𝗛𝗘𝗥𝗟𝗢𝗗𝗘"
+  },
+  "1454895378": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Spichki bar / Спички бар"
+  },
+  "1475558991": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "Кейс-чемпионаты Changellenge >> / Поиск команды"
+  },
+  "1476882161": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Код Желтый"
+  },
+  "1498101617": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Амина"
+  },
+  "1507300353": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Заметки Бэкендера"
+  },
+  "1548230929": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "ОТП Банк"
+  },
+  "1553538377": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Высшая школа экономики"
+  },
+  "1568772841": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "CODZONE"
+  },
+  "1580126989": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Москва | Куда сходить?"
+  },
+  "1604893299": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "саша"
+  },
+  "1699944303": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "polline ✨🦈"
+  },
+  "1703549869": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Таня Коваль. ЕГЭ по русскому языку"
+  },
+  "1712111703": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Backender | CMD"
+  },
+  "1727073750": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Архиватор | IT"
+  },
+  "1740277944": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Лучшие курсы для программистов"
+  },
+  "1757071472": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "Yandex for ML Chat"
+  },
+  "1786987818": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Dev & ML Connectable Jobs"
+  },
+  "1817711270": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Запрети мне псевдолейблить"
+  },
+  "1854803518": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Young&&Yandex"
+  },
+  "1897390401": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "better data community"
+  },
+  "1902614939": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "Самураи Константина Игоревича"
+  },
+  "1917195326": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Центральный университет"
+  },
+  "1931803693": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "Тренировки по ML в Яндексе"
+  },
+  "2014683445": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Кейс-чемпионат ЦУ"
+  },
+  "2040962466": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Ilya_Ivaninskiy"
+  },
+  "2058642893": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "areterra"
+  },
+  "2061202990": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Вакансии аналитикам и Data science"
+  },
+  "2086341770": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Жизнь и датка"
+  },
+  "2103965716": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Да, я такая..."
+  },
+  "2107102401": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Абитуриенты бакалавриата ЦУ"
+  },
+  "2163181307": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "ЦУ: Соревновательный ML"
+  },
+  "2215129018": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "K."
+  },
+  "2222556136": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "В центре событий"
+  },
+  "2224019844": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "quant barbie"
+  },
+  "2290586641": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "СберСтудент"
+  },
+  "2312186770": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Магазин Яндекса"
+  },
+  "2318884303": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "Клуб тактических игр ЦУ"
+  },
+  "2354743224": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "CU E2A"
+  },
+  "2400315872": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "CU_Event club"
+  },
+  "2552090211": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "ЦУ без контекста"
+  },
+  "2585289651": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Кафедра Игровых Исследований"
+  },
+  "2611879403": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "т-дедлайн"
+  },
+  "2654509939": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "Киберспорт в ЦУ"
+  },
+  "2666475979": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Предпринимательский клуб ЦУ"
+  },
+  "2734028569": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "Движемся к отчислению | Чат"
+  },
+  "2754244964": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "Бакалавриат ЦУ 2025 | флудилка_чат"
+  },
+  "2764115757": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "технарская копилка (18% годовых)"
+  },
+  "2805674934": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "Магистры ЦУ"
+  },
+  "2808637011": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "ЦУ окей, бизнес…"
+  },
+  "2843746455": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Олимпиадное комьюнити ЦУ"
+  },
+  "2936376012": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "🎵Music Club"
+  },
+  "2955244200": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "MC ЦУ"
+  },
+  "2961161535": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "ЦУ в Байкале"
+  },
+  "2971400858": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "Ежи Скубачевского"
+  },
+  "302628460": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Alena P."
+  },
+  "3028988096": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "Алкоголизм"
+  },
+  "3085766605": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "Владена помогает не числануться"
+  },
+  "3106816657": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "cuspy chat"
+  },
+  "3110547015": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "Клуб Настольного Тенниса"
+  },
+  "3162129789": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Base Club"
+  },
+  "3249665781": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "аннушка"
+  },
+  "342747182": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Сашенька"
+  },
+  "3519898678": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "сс: сеня создал"
+  },
+  "3584427318": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "ЦУ Kaggle core"
+  },
+  "3638121200": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Дата и Время"
+  },
+  "3695136071": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "Градиент роста"
+  },
+  "3705178693": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "T&L x Тедер: Сберсити"
+  },
+  "3741950967": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "Base Club Chat"
+  },
+  "3750922324": {
+    "category": "channel",
+    "is_bot": false,
+    "peer_type": "channel",
+    "title": "В центре индустрии"
+  },
+  "3770710212": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "DLS (часть 3, весна 2026)"
+  },
+  "3794492883": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "DLS (часть 1, весна 2026)"
+  },
+  "3819451921": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "DLS (Speech, весна 2026)"
+  },
+  "3871785711": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "DLS (часть 2, весна 2026)"
+  },
+  "3880965040": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "Записи 1 курс 2 сем"
+  },
+  "388970321": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Карина"
+  },
+  "3927132010": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "Yandex ML Challenge 2026"
+  },
+  "4199509899": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "Мама и дети 👩‍👧‍👦"
+  },
+  "473632643": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Георгий"
+  },
+  "497007724": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "ваня, инфраконф"
+  },
+  "5121449137": {
+    "category": "bot",
+    "is_bot": true,
+    "peer_type": "user",
+    "title": "PIPL BAR"
+  },
+  "5124850818": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Мама"
+  },
+  "5161307103": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "regional-it-center"
+  },
+  "5165703486": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "философия и наука, проект"
+  },
+  "5232297164": {
+    "category": "group",
+    "is_bot": false,
+    "peer_type": "group",
+    "title": "Градиент"
+  },
+  "5360370447": {
+    "category": "bot",
+    "is_bot": true,
+    "peer_type": "user",
+    "title": "Ровесник Робот"
+  },
+  "5693188004": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Влад"
+  },
+  "5740526854": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Елисей"
+  },
+  "6127823917": {
+    "category": "bot",
+    "is_bot": true,
+    "peer_type": "user",
+    "title": "SimCards"
+  },
+  "641123011": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Alexey"
+  },
+  "650795896": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Резван Гатауллин"
+  },
+  "705512609": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Alena Zaytseva"
+  },
+  "710882046": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Сергей"
+  },
+  "7186282411": {
+    "category": "bot",
+    "is_bot": true,
+    "peer_type": "user",
+    "title": "Yet another recruiter"
+  },
+  "730238839": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "cehokoc(Arseniy)"
+  },
+  "7526649669": {
+    "category": "bot",
+    "is_bot": true,
+    "peer_type": "user",
+    "title": "Аренда Sim-карт / Виртуальные номера"
+  },
+  "7663067145": {
+    "category": "bot",
+    "is_bot": true,
+    "peer_type": "user",
+    "title": "CuClubs"
+  },
+  "7703230367": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Liza Nikolaenko"
+  },
+  "774301386": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Игорь Мамаев"
+  },
+  "7924345373": {
+    "category": "bot",
+    "is_bot": true,
+    "peer_type": "user",
+    "title": "MosDate"
+  },
+  "7930800164": {
+    "category": "bot",
+    "is_bot": true,
+    "peer_type": "user",
+    "title": "CU Spy"
+  },
+  "793835159": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Сергей"
+  },
+  "8217376856": {
+    "category": "bot",
+    "is_bot": true,
+    "peer_type": "user",
+    "title": "Студенты Яндекс Образования"
+  },
+  "842013090": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Yaroslav Inflorescence"
+  },
+  "8429285676": {
+    "category": "bot",
+    "is_bot": true,
+    "peer_type": "user",
+    "title": "События магистратуры ЦУ"
+  },
+  "8525201833": {
+    "category": "bot",
+    "is_bot": true,
+    "peer_type": "user",
+    "title": "telebio"
+  },
+  "8671829762": {
+    "category": "bot",
+    "is_bot": true,
+    "peer_type": "user",
+    "title": "culab_taker"
+  },
+  "8844149114": {
+    "category": "bot",
+    "is_bot": true,
+    "peer_type": "user",
+    "title": "telefriends"
+  },
+  "8944664752": {
+    "category": "bot",
+    "is_bot": true,
+    "peer_type": "user",
+    "title": "ЦУтиная охота"
+  },
+  "90002291": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Alexander Guschin"
+  },
+  "93372553": {
+    "category": "bot",
+    "is_bot": true,
+    "peer_type": "user",
+    "title": "BotFather"
+  },
+  "939355758": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Андрей"
+  },
+  "952382211": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "марат"
+  },
+  "969841006": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "Арина Субботина"
+  },
+  "998759222": {
+    "category": "personal",
+    "is_bot": false,
+    "peer_type": "user",
+    "title": "макс"
+  }
+}

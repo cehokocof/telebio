@@ -21,6 +21,7 @@ from telebio.prompts import Prompt, get_prompt, load_prompts
 from telebio.providers.base import BioProvider
 from telebio.providers.list_provider import ListBioProvider
 from telebio.providers.llm_provider import LLMBioProvider
+from telebio.services.state_store import StateStore
 from telebio.services.telegram import TelegramService
 from telebio.services.bot import BotService
 from telebio.scheduler import run_scheduler
@@ -144,16 +145,24 @@ def _configure_logging(level: str) -> None:
 async def _async_main() -> None:
     settings = load_settings()
     _configure_logging(settings.log_level)
+
+    prompts = load_prompts(settings.prompts_path)
+
+    # Restore persisted mode/prompt before constructing providers so the
+    # scheduler starts in the user's last-known configuration.
+    store = StateStore(settings.state_db_path)
+    persisted = store.load_settings()
+    initial_mode = persisted.get("mode", settings.bio_provider)
+    initial_prompt = persisted.get("prompt_name", prompts[0].name)
+
     scheduler_interval = (
         settings.telegram_context_poll_minutes
-        if settings.bio_provider == "telegram_context"
+        if initial_mode == "telegram_context"
         else settings.update_interval_minutes
     )
 
     logger.info("Starting TeleBio (interval=%d min, provider=%s)",
-                scheduler_interval, settings.bio_provider)
-
-    prompts = load_prompts(settings.prompts_path)
+                scheduler_interval, initial_mode)
 
     async with TelegramService(
         api_id=settings.api_id,
@@ -162,7 +171,7 @@ async def _async_main() -> None:
     ) as tg:
         # Shared mutable runtime state (mode + active prompt) — read by both the
         # scheduler and the management bot.
-        state = {"mode": settings.bio_provider, "prompt_name": prompts[0].name}
+        state = {"mode": initial_mode, "prompt_name": initial_prompt}
 
         # Provider factory for (re)building on mode / prompt change
         def provider_factory(mode: str) -> BioProvider:
@@ -170,7 +179,7 @@ async def _async_main() -> None:
                 mode, settings, tg, prompts, state.get("prompt_name")
             )
 
-        provider = provider_factory(settings.bio_provider)
+        provider = provider_factory(initial_mode)
 
         # Start management bot if token is provided
         bot = None
@@ -184,6 +193,7 @@ async def _async_main() -> None:
                 telegram=tg,
                 provider_factory=provider_factory,
                 prompts=prompts,
+                store=store,
             )
             await bot.start(owner_id=me.id)
             logger.info("Management bot enabled")
@@ -223,6 +233,7 @@ async def _async_main() -> None:
         if bot:
             await bot.stop()
 
+    store.close()
     logger.info("TeleBio stopped.")
 
 

@@ -47,7 +47,8 @@ def main() -> None:
     if not dataset_path.exists():
         st.info(
             "Dataset not found. Build it with: "
-            "`uv run python -m labeling.build_dataset --output data/context_labeling.parquet`"
+            "`uv run python -m labeling.cli.prepare_dataset --source <raw>.parquet "
+            "--output data/context_labeling_train.parquet`"
         )
         return
 

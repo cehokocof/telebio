@@ -341,13 +341,6 @@ class TestBotServiceUnit:
         assert bot.history[0]["bio"] == "test bio"
         assert bot.history[0]["mode"] == "list"
 
-    def test_history_max_len(self) -> None:
-        bot = _make_bot()
-        for i in range(15):
-            bot.record_bio_update(f"bio {i}", "list")
-
-        assert len(bot.history) == 10
-
     def test_toggle_pause(self) -> None:
         bot = _make_bot()
         assert not bot.paused

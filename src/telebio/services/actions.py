@@ -64,7 +64,7 @@ def apply_mode(bot: BotService, mode: str) -> str:
         return texts.MODE_UNKNOWN
     if mode == bot.current_mode.get("mode", ""):
         return texts.mode_already(mode)
-    bot.current_mode["mode"] = mode
+    bot.set_mode(mode)
     logger.info("Mode switched to '%s'", mode)
     return texts.mode_switched(mode)
 
